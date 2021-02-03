@@ -1,0 +1,5 @@
+node_modules/
+DownloadTemp/
+config.json
+
+*.pdf

@@ -1,0 +1,30 @@
+{
+  "dependencies": {
+    "axios": "^0.21.1",
+    "axios-cookiejar-support": "^1.0.1",
+    "pdfkit": "^0.11.0",
+    "prompts": "^2.4.0",
+    "querystring": "^0.2.0",
+    "tough-cookie": "^4.0.0",
+    "xml2js": "^0.4.23"
+  },
+  "bin": "EbookDownloader.js",
+  "pkg": {
+    "assets": [
+      "node_modules/**/*"
+    ],
+    "targets": [
+      "node14-win-x64"
+    ]
+  },
+  "name": "ebookdownloader",
+  "version": "1.0.0",
+  "main": "EbookDownloader.js",
+  "scripts": {
+    "start": "node EbookDownloader.js",
+    "build": "pkg --output build/ ."
+  },
+  "author": "RythenGlyth",
+  "license": "ISC",
+  "description": ""
+}
