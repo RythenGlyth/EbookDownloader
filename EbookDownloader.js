@@ -17,7 +17,7 @@ prompts([
     {
         type: 'select',
         name: 'publisher',
-        message: "Verlag",
+        message: "Publisher",
         choices: [
             {
                 title: 'Klett',
@@ -37,12 +37,12 @@ prompts([
     {
         type: 'password',
         name: 'passwd',
-        message: "Paswort",
+        message: "Pasword",
     },
     {
         type: 'autocomplete',
         name: 'isbn',
-        message: "Buch",
+        message: "Book",
         choices: (prev, values) => {
             var arr = [
                 {
@@ -69,12 +69,12 @@ prompts([
     {
         type: 'number',
         name: 'quality',
-        message: "Qualität (0 = beste Qualität)",
+        message: "quality (0 = best quality)",
     },
     {
         type: 'confirm',
         name: 'deleteAllOldTempImages',
-        message: "Alle alten Temp Bilder löschen",
+        message: "Delet old temp images",
         initial: true
     }
 ]).then(inputs => {
