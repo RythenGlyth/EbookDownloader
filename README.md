@@ -5,7 +5,8 @@ Downloads all Images of the pages of a bought ebook, downloads it and converts i
 ## Running
 
 1. Clone or download the zip
-2. run `npm start`
+2. run `npm init`
+3. run `npm start`
 
 ## Supported Publishers
 - Cornelsen (`scook.de`)
