@@ -9,4 +9,4 @@ Downloads all Images of the pages of a bought ebook, downloads it and converts i
 
 ## Supported Publishers
 - Cornelsen (`scook.de`)
-- *Currently working on: Klett (`klett.de`)*
+- Klett (`klett.de`)

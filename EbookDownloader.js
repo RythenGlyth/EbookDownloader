@@ -8,6 +8,7 @@ const PDFDoc =require('pdfkit');
 const util = require('util')
 const prompts  = require('prompts');
 
+var HTMLParser = require('node-html-parser');
 var parseString = require('xml2js').parseString;
 const { stdin, stdout } = require('process');
 
@@ -45,10 +46,6 @@ prompts([
         message: "Book",
         choices: (prev, values) => {
             var arr = [
-                {
-                    title: 'ISBN',
-                    value: 'customisbn'
-                }
             ];
             if(values.publisher == "cornelsen")
                 arr.push({
@@ -58,13 +55,31 @@ prompts([
                     title: 'Englisch Klasse 9',
                     value: '9783060328109'
                 })
+            if(values.publisher == "klett")
+                arr.push({
+                    title: "Geschichte und Geschehen 9",
+                    value: "EBK-SPKXAVF6EM"
+                }, {
+                    title: "Lambacher Schweizer Mathematik 9",
+                    value: "EBK-4TVSHFYQAM"
+                })
+            arr.push(
+                {
+                    title: values.publisher == "klett" ? "ID" : 'ISBN',
+                    value: 'customisbn'
+                })
             return arr;
         }
     },
     {
         type: prev => prev == "customisbn" ? "text" : null,
         name: 'isbn',
-        message: "ISBN"
+        message: (prev, values) => values.publisher == "klett" ? "ID" : 'ISBN'
+    },
+    {
+        type: (prev, values) => (values.publisher == "klett" && values.isbn == "customisbn") ? "text" : null,
+        name: 'name',
+        message: "Name"
     },
     {
         type: 'number',
@@ -83,27 +98,129 @@ prompts([
     inputs.isbn = inputs.isbn || require("./config.json").isbn;
     inputs.quality = inputs.quality || 0;
 
+    if(!inputs.name) {
+        switch(inputs.isbn) {
+            case "EBK-SPKXAVF6EM":
+                inputs.name = "Geschichte und Geschehen 9";
+                break;
+            case "EBK-4TVSHFYQAM":
+                inputs.name = "Lambacher Schweizer Mathematik 9";
+                break;
+        }
+    }
+
 
     var json = {
         "cornelsen": cornelsen,
         "klett": klett
     }
-    json[inputs.publisher](inputs.email, inputs.passwd, inputs.isbn, inputs.quality, inputs.deleteAllOldTempImages);
+    json[inputs.publisher](inputs.email, inputs.passwd, inputs.isbn, inputs.name, inputs.quality, inputs.deleteAllOldTempImages);
 })
-async function klett(email, passwd, isbn, quality, deleteAllOldTempImages) {
+async function klett(email, passwd, isbn, name, quality, deleteAllOldTempImages) {
     const cookieJar = new tough.CookieJar();
     axios({
-        url: "https://www.klett.de/login",
+        url: "https://schueler.klett.de/arbeitsplatz/",
         method: "get",
         jar: cookieJar,
         withCredentials: true,
     }).then(res => {
-        console.log(cookieJar);
+        var loginForm = HTMLParser.parse(res.data).querySelector("#kc-form-login").attributes;
+        axios({
+            url: loginForm.action,
+            method: loginForm.method,
+            jar: cookieJar,
+            withCredentials: true,
+            data: qs.stringify({
+                username: email,
+                password: passwd,
+                renemberMe: "on"
+            }),
+            headers: {
+                'content-type': "application/x-www-form-urlencoded"
+            }
+        }).then(res => {
+            var folder = ("./DownloadTemp/" + name + "/").replace(/[^a-zA-Z0-9/ .]/gi, '');
+            if (deleteAllOldTempImages && fs.existsSync(folder)) fs.rmSync(folder, {
+                recursive: true,
+            });
+            console.log("Deleted Temp files");
+            fs.mkdir(folder, {
+                recursive: true
+            }, () => {
+                console.log("created Folder: " + folder)
+                axios({
+                    url: "https://bridge.klett.de/" + isbn + "/",
+                    method: "get",
+                    jar: cookieJar,
+                    withCredentials: true,
+                }).then((res) => {
+                    Promise.all(HTMLParser.parse(res.data).querySelector(".viewport").querySelector(".zoomable").querySelector(".pages").childNodes.map(pageNode => {
+                        return new Promise((resolve, reject) => {
+                            setTimeout(() => {
+                                //console.log(zeroPad(pageNode.getAttribute("data-pos"), 4));
+                                if(pageNode.querySelector(".content")) {
+                                    var imgs = pageNode.querySelector(".content").querySelector(".image-layers").childNodes.map(nd => nd.childNodes[0].getAttribute("style").split("'")[1]).reverse();
+                                    var img = (imgs[quality] || imgs.slice(-1)[0]);
+                                    axios({
+                                        url: "https://bridge.klett.de/" + isbn + "/" + img,
+                                        method: "get",
+                                        jar: cookieJar,
+                                        withCredentials: true,
+                                        responseType: 'arraybuffer',
+                                        withCredentials: true,
+                                    }).then((res) => {
+                                        var extension = img.split(".").slice(-1);
+                                        fs.writeFileSync(folder + zeroPad(pageNode.getAttribute("data-pos"), 4) + "." + extension, Buffer.from(res.data, 'binary'))
+                                        console.log("Wrote " + folder + zeroPad(pageNode.getAttribute("data-pos"), 4) + "." + extension)
+                                        resolve();
+                                    }).catch(err => {
+                                        console.log("error downloading" + zeroPad(pageNode.getAttribute("data-pos"), 4))
+                                    })
+                                } else {
+                                    console.log("no image for " + zeroPad(pageNode.getAttribute("data-pos"), 4))
+                                    resolve();
+                                }
+                            }, 50);
+                        });
+                    })).then(() => {
+                        console.log("Downloaded all images");
+                        var doc = new PDFDoc({
+                            margins: {
+                                top: 0,
+                                bottom: 0,
+                                left: 0,
+                                right: 0
+                            },
+                            autoFirstPage: false,
+                            size: "A4"
+                        });
+                        doc.pipe(fs.createWriteStream(name.replace(/[^a-zA-Z0-9/ .]/gi, '') + ".pdf"))
+                        var dir = fs.readdirSync(folder);
+                        dir.sort().forEach((file, idx) => {
+                            doc.addPage();
+                            doc.image(folder + file, {
+                                fit: [595.28, 841.89],
+                                align: 'center',
+                                valign: 'center'
+                            });
+                        });
+                        doc.end();
+                        console.log("Wrote " + name.replace(/[^a-zA-Z0-9/ .]/gi, '') + ".pdf")
+                    });
+                }).catch(err => {
+                    console.log(err);
+                    console.log("Error fetching pages Amount")
+                });
+            });
+        }).catch(err => {
+            console.log("Error while login")
+        });
     }).catch(err => {
-        resolve();
+        console.log(err);
+        console.log("Error fetching loginForm")
     });
 }
-function cornelsen(email, passwd, isbn, quality, deleteAllOldTempImages) {
+function cornelsen(email, passwd, isbn, name, quality, deleteAllOldTempImages) {
     const cookieJar = new tough.CookieJar();
     axios({
         url: "https://www.scook.de/action/scook/148/action/actionLogin",
