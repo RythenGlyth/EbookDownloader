@@ -259,7 +259,7 @@ function cornelsen(email, passwd, isbn, name, quality, deleteAllOldTempImages) {
                                                     message: "Selectable Text",
                                                     initial: true,
                                                 }]).then(values2 => {
-                                                    var filename = name.replace(/[^a-zA-Z0-9 .]/gi, '') + `_${Math.floor(pagesData.pages[0].width * values2.quality)}x${Math.floor(pagesData.pages[0].height * values2.quality)}_${values2.magickquality}q`;
+                                                    var filename = name.replace(/[^a-zA-Z0-9 \(\)_\-,\.]/gi, '') + `_${Math.floor(pagesData.pages[0].width * values2.quality)}x${Math.floor(pagesData.pages[0].height * values2.quality)}_${values2.magickquality}q`;
                                                     var tmpFolder = "./DownloadTemp/" + filename + "/";
                                                     if (deleteAllOldTempImages && fs.existsSync(tmpFolder)) fs.rmSync(tmpFolder, {
                                                         recursive: true,
