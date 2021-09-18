@@ -1,6 +1,6 @@
 # EbookDownloader
 
-Downloads all Images of the pages of a bought ebook, downloads it and converts it into a pdf.
+Downloads all the images from the pages of a purchased e-book and combines them into one PDF.
 
 ## Running
 
@@ -9,7 +9,7 @@ Downloads all Images of the pages of a bought ebook, downloads it and converts i
 3. run `npm init`
 4. run `npm start` 
 
-## Supported Publishers
+## Supported Publishers (websites)
 - Cornelsen (`cornelsen.de`)
 - Cornelsen (`scook.de`)
 - Klett (`klett.de`)
