@@ -13,6 +13,7 @@ var spawn = require('child_process').spawn
 var HTMLParser = require('node-html-parser');
 var parseString = require('xml2js').parseString;
 const { stdin, stdout } = require('process');
+const { resolve } = require('path');
 
 axiosCookieJarSupport(axios);
 
@@ -47,7 +48,7 @@ prompts([
         message: "Pasword (Empty to read from config)",
     },
     {
-        type: (prev, values) => values.publisher == "cornelsen" ? null : 'autocomplete',
+        type: (prev, values) => values.publisher == "cornelsen" || values.publisher == "klett" ? null : 'autocomplete',
         name: 'isbn',
         message: "Book",
         choices: (prev, values) => {
@@ -60,14 +61,6 @@ prompts([
                 }, {
                     title: 'Englisch Klasse 9',
                     value: '9783060328109'
-                })
-            if(values.publisher == "klett")
-                arr.push({
-                    title: "Geschichte und Geschehen 9",
-                    value: "EBK-SPKXAVF6EM"
-                }, {
-                    title: "Lambacher Schweizer Mathematik 9",
-                    value: "EBK-4TVSHFYQAM"
                 })
             arr.push(
                 {
@@ -88,7 +81,7 @@ prompts([
         message: "Name"
     },
     {
-        type: (prev, values) => values.publisher == "cornelsen" ? null : 'number',
+        type: (prev, values) => values.publisher == "cornelsen" || values.publisher == "klett" ? null : 'number',
         name: 'quality',
         message: "quality (0 = best quality)",
     },
@@ -103,18 +96,6 @@ prompts([
     inputs.passwd = inputs.passwd || require("./config.json")?.[inputs.publisher]?.passwd;
     inputs.isbn = inputs.isbn || require("./config.json")?.[inputs.publisher]?.isbn;
     inputs.quality = inputs.quality || 0;
-
-    if(!inputs.name) {
-        switch(inputs.isbn) {
-            case "EBK-SPKXAVF6EM":
-                inputs.name = "Geschichte und Geschehen 9";
-                break;
-            case "EBK-4TVSHFYQAM":
-                inputs.name = "Lambacher Schweizer Mathematik 9";
-                break;
-        }
-    }
-
 
     var json = {
         "cornelsen": cornelsen,
@@ -234,7 +215,7 @@ function cornelsen(email, passwd, isbn, name, quality, deleteAllOldTempImages) {
                                             }).then(res => {
                                                 var pagesData = res.data.data;
                                                 prompts([{
-                                                    type: 'autocomplete',
+                                                    type: 'select',
                                                     name: 'quality',
                                                     message: "Quality",
                                                     choices: pspdfkitauthdata.allowedTileScales.map(q => {
@@ -300,7 +281,7 @@ function cornelsen(email, passwd, isbn, name, quality, deleteAllOldTempImages) {
                                                         var pagesText = {};
 
                                                         var errored = false;
-                                                        console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded 0/${pagesData.pages.length}`)
+                                                        console.log(`Downloaded 0/${pagesData.pages.length}`)
                                                         var pi = 0;
                                                         for(p of pagesData.pages) {
                                                             pi++;
@@ -500,51 +481,226 @@ async function klett(email, passwd, isbn, name, quality, deleteAllOldTempImages)
                 'content-type': "application/x-www-form-urlencoded"
             }
         }).then(res => {
-            var folder = ("./DownloadTemp/" + name + "/").replace(/[^a-zA-Z0-9/ .]/gi, '');
-            if (deleteAllOldTempImages && fs.existsSync(folder)) fs.rmSync(folder, {
-                recursive: true,
-            });
-            console.log("Deleted Temp files");
-            fs.mkdir(folder, {
-                recursive: true
-            }, () => {
-                console.log("created Folder: " + folder)
-                axios({
-                    url: "https://bridge.klett.de/" + isbn + "/",
-                    method: "get",
-                    jar: cookieJar,
-                    withCredentials: true,
-                }).then((res) => {
-                    Promise.all(HTMLParser.parse(res.data).querySelector(".viewport").querySelector(".zoomable").querySelector(".pages").childNodes.map(pageNode => {
-                        return new Promise((resolve, reject) => {
-                            setTimeout(() => {
-                                //console.log(zeroPad(pageNode.getAttribute("data-pos"), 4));
-                                if(pageNode.querySelector(".content")) {
-                                    var imgs = pageNode.querySelector(".content").querySelector(".image-layers").childNodes.map(nd => nd.childNodes[0].getAttribute("style").split("'")[1]).reverse();
-                                    var img = (imgs[quality] || imgs.slice(-1)[0]);
+            axios({
+                url: "https://www.klett.de/drm/api/1.0/private/license/usage?size=50&page=1&valid=true",
+                jar: cookieJar,
+                withCredentials: true,
+            }).then(async res => {
+                var choices = [];
+                for(let l of res.data?.items) {
+                    choices.push(await new Promise((resolve, rej) => {
+                        axios({
+                            url: l?.["_links"]?.["produkt"]?.["href"],
+                            jar: cookieJar,
+                            withCredentials: true,
+                        }).then(res => {
+                            resolve({
+                                title: res.data?.titel + " - " + res.data?.untertitel,
+                                value: {dienst_id: l.dienst_id, title: res.data?.titel + " - " + res.data?.untertitel}
+                            })
+                        }).catch(err => {
+                            console.log(err);
+                            console.log("Error fetching book info")
+                        })
+                    }))
+                }
+                prompts([{
+                    type: (prev, values) => values.publisher == "cornelsen" ? null : 'autocomplete',
+                    name: 'license',
+                    message: "Book",
+                    choices
+                }]).then(values => {
+
+                    axios({
+                        url: "https://bridge.klett.de/" + values.license.dienst_id + "/",
+                        method: "get",
+                        jar: cookieJar,
+                        withCredentials: true,
+                    }).then(async (res) => {
+                        //fs.writeFileSync("./sas", res.data);
+                        //Promise.all(HTMLParser.parse(res.data).querySelector(".viewport").querySelector(".zoomable").querySelector(".pages").childNodes.map(pageNode => {
+                        var mainpagehtml = HTMLParser.parse(res.data);
+                        var settingsJSON = JSON.parse(mainpagehtml.querySelector("#settings-json").innerText);
+                        //console.log(settingsJSON);
+
+                        var size;
+                        /** @type {{[page: number]: {height: number, width: number, x: number, y: number, url: string}[]}} */
+                        var hyperlinks = {};
+                        var selectableText = {};
+
+                        var bothPrompts = await prompts([{
+                            type: "toggle",
+                            name: "selectableText",
+                            message: "Selectable text",
+                            initial: true,
+                        }, {
+                            type: "toggle",
+                            name: "hyperlinks",
+                            message: "Hyperlinks",
+                            initial: true,
+                        }])
+
+                        if(settingsJSON.buildYear == "2021") {
+
+                            console.log("starting new downloader")
+
+                            var values2 = await prompts([{
+                                type: 'select',
+                                name: 'quality',
+                                message: "quality",
+                                choices: settingsJSON?.pages?.resolutions.sort((a, b) => b.scale - a.scale).map(q => {
+                                    return {
+                                        title: `${q.width} x ${q.height} (Scale ${q.scale})`,
+                                        value: q
+                                    }
+                                })
+                            }])
+
+
+                            var name = values.license.title.replace(/[^a-zA-Z0-9 \(\)_\-,\.]/gi, '') + "_" + `${values2.quality.width}x${values2.quality.height}`;
+                            var folder = ("./DownloadTemp/" + name + "/");
+                            if (deleteAllOldTempImages && fs.existsSync(folder)) fs.rmSync(folder, {
+                                recursive: true,
+                            });
+                            console.log("Deleted Temp files");
+                            fs.mkdirSync(folder, {
+                                recursive: true
+                            });
+                            console.log("created Folder: " + folder)
+
+
+                            var titles = settingsJSON.pages.titles;
+                            var imgExtension = values2.quality.path.split(".").slice(-1);
+
+                            console.log(`Downloaded 0/${titles.length}`)
+                            for(let pi in titles) {
+                                if(pi > 20) break;
+                                await new Promise((resolve, reject) => {
                                     axios({
-                                        url: "https://bridge.klett.de/" + isbn + "/" + img,
+                                        url: "https://bridge.klett.de/" + values.license.dienst_id + "/" + values2.quality.path.replace("${page}", pi),
                                         method: "get",
                                         jar: cookieJar,
                                         withCredentials: true,
-                                        responseType: 'arraybuffer',
+                                        responseType: 'stream',
                                         withCredentials: true,
                                     }).then((res) => {
-                                        var extension = img.split(".").slice(-1);
-                                        fs.writeFileSync(folder + zeroPad(pageNode.getAttribute("data-pos"), 4) + "." + extension, Buffer.from(res.data, 'binary'))
-                                        console.log("Wrote " + folder + zeroPad(pageNode.getAttribute("data-pos"), 4) + "." + extension)
-                                        resolve();
+                                        res.data.pipe(fs.createWriteStream(folder + zeroPad(pi, 4) + "-" + titles[pi] + "." + imgExtension)).on('finish', () => {
+                                            console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${parseInt(pi)+1}/${titles.length} pages`)
+                                            resolve();
+                                        })
                                     }).catch(err => {
-                                        console.log("error downloading" + zeroPad(pageNode.getAttribute("data-pos"), 4))
+                                        console.log(err);
+                                        console.log("Error downloading page " + pi + " - " + titles[pi])
+                                        resolve();
                                     })
-                                } else {
-                                    console.log("no image for " + zeroPad(pageNode.getAttribute("data-pos"), 4))
-                                    resolve();
-                                }
-                            }, 50);
+                                });
+                                    
+                            }
+                            console.log("Downloaded all images");
+
+                            var dataJson;
+
+                            if(bothPrompts.selectableText || bothPrompts.hyperlinks) {
+                                console.log("Downloading pages text");
+
+                                dataJson = await new Promise((resolve, reject) => {
+                                    axios({
+                                        url: "https://bridge.klett.de/" + values.license.dienst_id + "/data.json",
+                                        method: "get",
+                                        jar: cookieJar,
+                                        withCredentials: true,
+                                    }).then(async (res) => {
+                                        resolve(res.data);
+                                    }).catch(err => {
+                                        console.log(err);
+                                        console.log("Error downloading pages text")
+                                        resolve();
+                                    });
+                                });
+                            }
+
+                            if(bothPrompts.hyperlinks) {
+                                dataJson.pages.forEach((page, idx) => {
+                                    if(page.layers?.[0]?.areas?.length) {
+                                        hyperlinks[idx] = page.layers?.[0]?.areas;
+                                    }
+                                });
+                            }
+
+                            size = [ values2.quality.width / values2.quality.scale, values2.quality.height / values2.quality.scale ];
+
+                            //console.log(values2)
+
+                        } else {
+                            console.log("starting old downloader")
+
+                            var values2 = await prompts([{
+                                type: 'select',
+                                name: 'quality',
+                                message: "quality",
+                                choices: [4,2,1].map(q => {
+                                    return {
+                                        title: `${768 * q} x ${1024 * q} (Scale ${q})`,
+                                        value: q
+                                    }
+                                })
+                            }])
+                            
+                            var name = values.license.title.replace(/[^a-zA-Z0-9 \(\)_\-,\.]/gi, '') + "_" + `${768 * values2.quality}x${1024 * values2.quality}`;
+                            var folder = ("./DownloadTemp/" + name + "/");
+                            if (deleteAllOldTempImages && fs.existsSync(folder)) fs.rmSync(folder, {
+                                recursive: true,
+                            });
+                            console.log("Deleted Temp files");
+                            fs.mkdirSync(folder, {
+                                recursive: true
+                            });
+                            console.log("created Folder: " + folder)
+
+                            var pagesNode = mainpagehtml.querySelector(".viewport").querySelector(".zoomable").querySelector(".pages").childNodes;
+
+                            console.log(`Downloaded 0/${pagesNode.length}`)
+                            for(var pi in pagesNode) {
+                                if(pi > 10) break;
+                                var pageNode = pagesNode[pi];
+                                await new Promise((resolve, reject) => {
+                                    if(pageNode.querySelector(".content")) {
+                                        var imgs = pageNode.querySelector(".content").querySelector(".image-layers").childNodes.map(nd => nd.childNodes[0].getAttribute("style").split("'")[1]);
+                                        //var img = (imgs[quality] || imgs.slice(-1)[0]);
+                                        var img = imgs.find(img => img.includes("Scale" + values2.quality))
+                                        axios({
+                                            url: "https://bridge.klett.de/" + values.license.dienst_id + "/" + img,
+                                            method: "get",
+                                            jar: cookieJar,
+                                            withCredentials: true,
+                                            responseType: 'stream',
+                                            withCredentials: true,
+                                        }).then((res) => {
+                                            var extension = img.split(".").slice(-1);
+                                            res.data.pipe(fs.createWriteStream(folder + zeroPad(pageNode.getAttribute("data-pos"), 4) + "-" + pageNode.getAttribute("data-title") + "." + extension)).on('finish', () => {
+                                                console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${parseInt(pi)+1}/${pagesNode.length} pages`)
+                                                resolve();
+                                            })
+                                        }).catch(err => {
+                                            console.log(err);
+                                            console.log("error downloading" + zeroPad(pageNode.getAttribute("data-pos"), 4) + "-" + pageNode.getAttribute("data-title"))
+                                        })
+                                    } else {
+                                        resolve();
+                                    }
+                                });
+                            }
+                            console.log("Downloaded all images");
+                            size = [ 768, 1024 ];
+                        }
+
+                        await new Promise((resolve, reject) => {
+                            setTimeout(() => { // wait for pipes to finish (needs better handling)
+                                resolve();
+                            }, 5000);
                         });
-                    })).then(() => {
-                        console.log("Downloaded all images");
+                        console.log("Merging into PDF");
+
                         var doc = new PDFDoc({
                             margins: {
                                 top: 0,
@@ -553,25 +709,48 @@ async function klett(email, passwd, isbn, name, quality, deleteAllOldTempImages)
                                 right: 0
                             },
                             autoFirstPage: false,
-                            size: "A4"
+                            size,
+                            bufferPages: true,
                         });
-                        doc.pipe(fs.createWriteStream(name.replace(/[^a-zA-Z0-9/ .]/gi, '') + ".pdf"))
+                        console.log(bothPrompts);
+                        doc.pipe(fs.createWriteStream(name + ".pdf"))
+                        doc.font('./Roboto-Thin.ttf')
                         var dir = fs.readdirSync(folder);
                         dir.sort().forEach((file, idx) => {
                             doc.addPage();
                             doc.image(folder + file, {
-                                fit: [595.28, 841.89],
+                                fit: size,
                                 align: 'center',
                                 valign: 'center'
                             });
                         });
+                        dir.sort().forEach((file, idx) => {
+                            doc.switchToPage(idx);
+                            if(bothPrompts.hyperlinks) {
+                                //console.log(hyperlinks);
+                                hyperlinks[idx]?.forEach(area => {
+                                    var x = area.x * size[0];
+                                    var y = area.y * size[1];
+                                    var w = area.width * size[0];
+                                    var h = area.height * size[1];
+                                    if(area.url.startsWith("?page=") && (toPage = parseInt(area.url.split("=")[1]) -1) && toPage < doc.bufferedPageRange().start + doc.bufferedPageRange().count) {
+                                        doc.link(x, y, w, h, toPage);
+                                    } else {
+                                        doc.link(x, y, w, h, area.url);
+                                    }
+                                });
+                            }
+                        });
                         doc.end();
-                        console.log("Wrote " + name.replace(/[^a-zA-Z0-9/ .]/gi, '') + ".pdf")
+                        console.log("Wrote " + name + ".pdf")
+                    }).catch(err => {
+                        console.log(err);
+                        console.log("Error fetching pages")
                     });
-                }).catch(err => {
-                    console.log(err);
-                    console.log("Error fetching pages Amount")
                 });
+            }).catch(err => {
+                console.log(err);
+                console.log("Error fetching books")
             });
         }).catch(err => {
             console.log("Error while login")
