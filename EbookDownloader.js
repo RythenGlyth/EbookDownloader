@@ -526,6 +526,7 @@ async function klett(email, passwd, isbn, name, quality, deleteAllOldTempImages)
                         var size;
                         /** @type {{[page: number]: {height: number, width: number, x: number, y: number, url: string}[]}} */
                         var hyperlinks = {};
+                        /** @type {{[page: number]: {text: string, wordPositionSvg: string}}} */
                         var selectableText = {};
 
                         var bothPrompts = await prompts([{
@@ -574,7 +575,7 @@ async function klett(email, passwd, isbn, name, quality, deleteAllOldTempImages)
 
                             console.log(`Downloaded 0/${titles.length}`)
                             for(let pi in titles) {
-                                if(pi > 20) break;
+                                //if(pi > 20) break;
                                 await new Promise((resolve, reject) => {
                                     axios({
                                         url: "https://bridge.klett.de/" + values.license.dienst_id + "/" + values2.quality.path.replace("${page}", pi),
@@ -626,6 +627,17 @@ async function klett(email, passwd, isbn, name, quality, deleteAllOldTempImages)
                                     }
                                 });
                             }
+                            if(bothPrompts.selectableText) {
+                                for(var i = 0; i < dataJson.pages.length; i++) {
+                                    var page = dataJson.pages[i];
+                                    if(page.content && page.content.text && page.content.wordPositionSvg) {
+                                        selectableText[i] = {
+                                            text: page.content.text,
+                                            wordPositionSvg: page.content.wordPositionSvg
+                                        };
+                                    }
+                                }
+                            }
 
                             size = [ values2.quality.width / values2.quality.scale, values2.quality.height / values2.quality.scale ];
 
@@ -660,11 +672,39 @@ async function klett(email, passwd, isbn, name, quality, deleteAllOldTempImages)
                             var pagesNode = mainpagehtml.querySelector(".viewport").querySelector(".zoomable").querySelector(".pages").childNodes;
 
                             console.log(`Downloaded 0/${pagesNode.length}`)
+                            var offset = 0;
                             for(var pi in pagesNode) {
-                                if(pi > 10) break;
+                                //if(pi > 10) break;
                                 var pageNode = pagesNode[pi];
                                 await new Promise((resolve, reject) => {
                                     if(pageNode.querySelector(".content")) {
+
+                                        if(bothPrompts.hyperlinks) {
+                                            var hyperlinksLayer = pageNode.querySelector(".content").querySelector(".annotation-layers")?.querySelector(".Sprungmarke");
+                                            
+                                            hyperlinksLayer && (hyperlinks[parseInt(pi) + offset] = hyperlinksLayer.querySelectorAll("a")?.map(a => {
+                                                var style = Object.fromEntries(a.getAttribute("style").split(";").map(s => s.trim().split(":").map(si => si.trim())));
+                                                //console.log(style)
+                                                return {
+                                                    x: parseFloat(l = style["left"]) / (l.includes("%") ? 100 : 1),
+                                                    y: parseFloat(l = style["top"]) / (l.includes("%") ? 100 : 1),
+                                                    width: parseFloat(l = style["width"]) / (l.includes("%") ? 100 : 1),
+                                                    height: parseFloat(l = style["height"]) / (l.includes("%") ? 100 : 1),
+                                                    url: a.getAttribute("href"),
+                                                }
+                                            }))
+                                        }
+
+                                        if(bothPrompts.selectableText) {
+                                            var searchable = pageNode.querySelector(".content").querySelector(".searchable");
+                                            if(searchable && searchable.querySelector(".text") && searchable.querySelector("link")) {
+                                                selectableText[parseInt(pi) + offset] = {
+                                                    text: searchable.querySelector(".text").innerText,
+                                                    wordPositionSvg: searchable.querySelector("link").getAttribute("href")
+                                                };
+                                            }
+                                        }
+
                                         var imgs = pageNode.querySelector(".content").querySelector(".image-layers").childNodes.map(nd => nd.childNodes[0].getAttribute("style").split("'")[1]);
                                         //var img = (imgs[quality] || imgs.slice(-1)[0]);
                                         var img = imgs.find(img => img.includes("Scale" + values2.quality))
@@ -686,19 +726,98 @@ async function klett(email, passwd, isbn, name, quality, deleteAllOldTempImages)
                                             console.log("error downloading" + zeroPad(pageNode.getAttribute("data-pos"), 4) + "-" + pageNode.getAttribute("data-title"))
                                         })
                                     } else {
+                                        offset--;
                                         resolve();
                                     }
                                 });
                             }
                             console.log("Downloaded all images");
+
                             size = [ 768, 1024 ];
                         }
 
-                        await new Promise((resolve, reject) => {
-                            setTimeout(() => { // wait for pipes to finish (needs better handling)
-                                resolve();
-                            }, 5000);
-                        });
+                        if(bothPrompts.selectableText) {
+                            console.log(`Downloading selectable text positions (${0}/${Object.keys(selectableText).length})`);
+                            var i = 0;
+                            for(var st of Object.keys(selectableText)) {
+                                i++;
+                                var svg = await new Promise((resolve, reject) => {
+                                    axios({
+                                        url: "https://bridge.klett.de/" + values.license.dienst_id + "/" + selectableText[st].wordPositionSvg,
+                                        method: "get",
+                                        jar: cookieJar,
+                                        withCredentials: true,
+                                    }).then(res => {
+                                        resolve(res.data);
+                                    }).catch(err => {
+                                        console.log(err);
+                                        console.log("Error selectable text positions");
+                                        resolve();
+                                    });
+                                });
+                                var parsedSVG = HTMLParser.parse(svg);
+                                selectableText[st] = selectableText[st].text.split(" ").map((text, idx) => {
+                                    var path = parsedSVG.querySelector("#p" + (parseInt(st) + 1) + "w" + (idx+1))?.getAttribute("d");
+                                    var spltPaths = path?.split(/[zZ]/)?.filter(f=>f)?.map(f=>f.split(/(?=[a-zA-Z])/)?.map(s => [s[0], s.slice(1)?.split(" ")]));
+
+                                    var minX = undefined;
+                                    var maxX = undefined;
+                                    var minY = undefined;
+                                    var maxY = undefined;
+
+                                    if(spltPaths) for(var sp of spltPaths) {
+                                        var x = 0;
+                                        var y = 0;
+                                        if(sp) for(var s of sp) {
+                                            switch(s[0]) {
+                                                case "M":
+                                                case "L":
+                                                    x = parseFloat(s[1][0]);
+                                                    y = parseFloat(s[1][1]);
+                                                    break;
+                                                case "m":
+                                                case "l":
+                                                    x += parseFloat(s[1][0]);
+                                                    y += parseFloat(s[1][1]);
+                                                    break;
+                                                case "H":
+                                                    x = parseFloat(s[1][0]);
+                                                    break;
+                                                case "h":
+                                                    x += parseFloat(s[1][0]);
+                                                    break;
+                                                case "V":
+                                                    y = parseFloat(s[1][0]);
+                                                    break;
+                                                case "v":
+                                                    y += parseFloat(s[1][0]);
+                                                    break;
+                                            }
+                                            if(minX === undefined || x < minX) minX = x;
+                                            if(maxX === undefined || x > maxX) maxX = x;
+                                            if(minY === undefined || y < minY) minY = y;
+                                            if(maxY === undefined || y > maxY) maxY = y;
+                                        }
+                                    }
+
+                                    return {
+                                        contents: text,
+                                        left: minX,
+                                        top: minY,
+                                        width: maxX - minX,
+                                        height: maxY - minY,
+                                    }
+                                });
+                                console.log(`\x1b[1A\x1b[2K\x1b[1GDownloading selectable text positions (${i}/${Object.keys(selectableText).length})`);
+                            }
+                        } else {
+                            await new Promise((resolve, reject) => {
+                                setTimeout(() => { // wait for pipes to finish (needs better handling)
+                                    resolve();
+                                }, 2000);
+                            });
+                        }
+
                         console.log("Merging into PDF");
 
                         var doc = new PDFDoc({
@@ -712,7 +831,6 @@ async function klett(email, passwd, isbn, name, quality, deleteAllOldTempImages)
                             size,
                             bufferPages: true,
                         });
-                        console.log(bothPrompts);
                         doc.pipe(fs.createWriteStream(name + ".pdf"))
                         doc.font('./Roboto-Thin.ttf')
                         var dir = fs.readdirSync(folder);
@@ -723,24 +841,70 @@ async function klett(email, passwd, isbn, name, quality, deleteAllOldTempImages)
                                 align: 'center',
                                 valign: 'center'
                             });
-                        });
-                        dir.sort().forEach((file, idx) => {
-                            doc.switchToPage(idx);
-                            if(bothPrompts.hyperlinks) {
-                                //console.log(hyperlinks);
-                                hyperlinks[idx]?.forEach(area => {
-                                    var x = area.x * size[0];
-                                    var y = area.y * size[1];
-                                    var w = area.width * size[0];
-                                    var h = area.height * size[1];
-                                    if(area.url.startsWith("?page=") && (toPage = parseInt(area.url.split("=")[1]) -1) && toPage < doc.bufferedPageRange().start + doc.bufferedPageRange().count) {
-                                        doc.link(x, y, w, h, toPage);
-                                    } else {
-                                        doc.link(x, y, w, h, area.url);
+                            if(bothPrompts.selectableText) {
+                                selectableText[/*parseInt(file.split("-")[0])*/ idx]?.forEach(line => {
+                                    if(line.width && line.height && line.left && line.top && line.contents && line.contents.length > 0) {
+                                        doc.save();
+                                        //doc.rect(line.left, line.top, line.width, line.height).fillOpacity(0.5).fill("#1e1e1e")
+
+                                        doc.translate(line.left, line.top);
+                                        if(line.height > line.width && line.height / line.contents.length < line.width) {
+                                            doc.rotate(90).scale(line.height/doc.widthOfString(line.contents, {
+                                                lineBreak: false,
+                                            }), line.width/doc.heightOfString(line.contents, { 
+                                                lineBreak: false,
+                                            }) ).translate(0, -(doc.heightOfString(line.contents, { 
+                                                lineBreak: false,
+                                            }) / 2))
+                                        } else {
+                                            try {
+                                                doc.scale(line.width/doc.widthOfString(line.contents, {
+                                                    lineBreak: false,
+                                                }), line.height/doc.heightOfString(line.contents, { 
+                                                    lineBreak: false,
+                                                })).translate(0, (doc.heightOfString(line.contents, {
+                                                    lineBreak: false,
+                                                }) / 2));
+                                            } catch(err) {
+                                                console.log(err);
+                                                console.log(line.contents, line.left, line.top, line.width, line.height);
+                                                process.exit(1);
+                                            }
+                                        }
+                                        doc.fillOpacity(0)
+                                        doc.text(line.contents, 0, 0, {
+                                            lineGap: 0,
+                                            paragraphGap: 0,
+                                            lineBreak: false,
+                                            baseline: 'middle',
+                                            align: 'left',
+                                        });
+                                        doc.restore();
                                     }
                                 });
+
+
                             }
+                            console.log(`\x1b[1A\x1b[2K\x1b[1GMerging into PDF (${idx}/${dir.length})`);
                         });
+                        if(bothPrompts.hyperlinks) {
+                            console.log("Adding Hyperlinks")
+                            dir.sort().forEach((file, idx) => {
+                                doc.switchToPage(idx);
+                                    hyperlinks[idx]?.forEach(area => {
+                                        var x = area.x * size[0];
+                                        var y = area.y * size[1];
+                                        var w = area.width * size[0];
+                                        var h = area.height * size[1];
+                                        if(area.url.startsWith("?page=") && (toPage = parseInt(area.url.split("=")[1]) -1) && toPage < doc.bufferedPageRange().start + doc.bufferedPageRange().count) {
+                                            doc.link(x, y, w, h, toPage);
+                                        } else {
+                                            doc.link(x, y, w, h, area.url);
+                                        }
+                                    });
+                                console.log(`\x1b[1A\x1b[2K\x1b[1GAdding Hyperlinks (${idx}/${dir.length})`);
+                            });
+                        }
                         doc.end();
                         console.log("Wrote " + name + ".pdf")
                     }).catch(err => {
