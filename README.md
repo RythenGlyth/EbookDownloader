@@ -13,3 +13,4 @@ Downloads all the images from the pages of a purchased e-book and combines them 
 - Cornelsen (`cornelsen.de`)
 - Cornelsen (`scook.de`)
 - Klett (`klett.de`)
+- Westermann (`westermann.de`)

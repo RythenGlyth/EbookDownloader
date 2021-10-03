@@ -8,6 +8,7 @@ const PDFDoc =require('pdfkit');
 const util = require('util')
 const prompts  = require('prompts');
 const https = require('https')
+const crypto = require('crypto')
 var spawn = require('child_process').spawn
 
 var HTMLParser = require('node-html-parser');
@@ -34,6 +35,10 @@ prompts([
             {
                 title: 'Scook',
                 value: "scook"
+            },
+            {
+                title: 'Westermann',
+                value: "westermann"
             }
         ]
     },
@@ -48,44 +53,6 @@ prompts([
         message: "Pasword (Empty to read from config)",
     },
     {
-        type: (prev, values) => values.publisher == "cornelsen" || values.publisher == "klett" ? null : 'autocomplete',
-        name: 'isbn',
-        message: "Book",
-        choices: (prev, values) => {
-            var arr = [
-            ];
-            if(values.publisher == "scook")
-                arr.push({
-                    title: 'Deutsch Klasse 9',
-                    value: '9783060626410'
-                }, {
-                    title: 'Englisch Klasse 9',
-                    value: '9783060328109'
-                })
-            arr.push(
-                {
-                    title: values.publisher == "klett" ? "ID" : 'ISBN',
-                    value: 'customisbn'
-                })
-            return arr;
-        }
-    },
-    {
-        type: (prev, values) => prev == "customisbn" && values.publisher != "cornelsen" ? "text" : null,
-        name: 'isbn',
-        message: (prev, values) => values.publisher == "klett" ? "ID" : 'ISBN'
-    },
-    {
-        type: (prev, values) => (values.publisher == "klett" && values.isbn == "customisbn") ? "text" : null,
-        name: 'name',
-        message: "Name"
-    },
-    {
-        type: (prev, values) => values.publisher == "cornelsen" || values.publisher == "klett" ? null : 'number',
-        name: 'quality',
-        message: "quality (0 = best quality)",
-    },
-    {
         type: 'confirm',
         name: 'deleteAllOldTempImages',
         message: "Delet old temp images",
@@ -94,17 +61,318 @@ prompts([
 ]).then(inputs => {
     inputs.email = inputs.email || require("./config.json")?.[inputs.publisher]?.email;
     inputs.passwd = inputs.passwd || require("./config.json")?.[inputs.publisher]?.passwd;
-    inputs.isbn = inputs.isbn || require("./config.json")?.[inputs.publisher]?.isbn;
-    inputs.quality = inputs.quality || 0;
 
-    var json = {
-        "cornelsen": cornelsen,
-        "scook": scook,
-        "klett": klett
+    switch (inputs.publisher) {
+        case "cornelsen":
+            cornelsen(inputs.email, inputs.passwd, inputs.deleteAllOldTempImages)
+            break;
+        case "klett":
+            klett(inputs.email, inputs.passwd, inputs.deleteAllOldTempImages)
+            break;
+        case "scook":
+            scook(inputs.email, inputs.passwd, inputs.deleteAllOldTempImages)
+            break;
+        case "westermann":
+            westermann(inputs.email, inputs.passwd, inputs.deleteAllOldTempImages)
+            break;
     }
-    json[inputs.publisher](inputs.email, inputs.passwd, inputs.isbn, inputs.name, inputs.quality, inputs.deleteAllOldTempImages);
 })
-function cornelsen(email, passwd, isbn, name, quality, deleteAllOldTempImages) {
+
+function westermann(email, passwd, deleteAllOldTempImages) {
+    const cookieJar = new tough.CookieJar();
+    const axiosInstance = axios.create({
+        jar: cookieJar,
+        withCredentials: true,
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36',
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+        }
+    });
+    axiosInstance({
+        url: "https://bibox2.westermann.de/assets/environments/environment.json",
+        method: "GET"
+    }).then(res => {
+        /**
+         * @type {{production: boolean, dataPrivacyUrl: string, backendUrl: string, backendLogin: boolean, frontendUrl: string, frontendUrlIOS: string, accountAdminUrl: string, changePasswordUrl: string, zsv: { live: boolean, url: string, }, sentry: { enabled: boolean, dsn: string, }, matomoUrl: string, matomoSiteId: number, maxUploadFileSize: {        forTeacher: number, forUser: number, }, pingTimer: number, oauth: { loginURL: string, logoutURL: string, postLogoutRedirect: string, redirectURL: string, clientID: string, protocol: string, }}}
+        }}
+         */
+        var environment = res.data;
+
+        
+        var codeVerifier = randomString(50)
+        var codeChallenge = sha256hash.update(codeVerifier).digest('base64').replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+        var state = randomString(20);
+
+        axiosInstance({
+            url: environment.oauth.loginURL + "?client_id=" + environment.oauth.clientID + "&response_type=code&scope=openid&redirect_uri=" + environment.oauth.redirectURL + "&state=" + state + "&code_challenge_method=S256&code_challenge=" + codeChallenge,
+            method: "GET",
+        }).then(res => {
+            var parsedHTML = HTMLParser.parse(res.data);
+            var form = parsedHTML.querySelector("form");
+            axiosInstance({
+                url: "https://mein.westermann.de" + form.getAttribute("action"),
+                method: "post",
+                data: qs.stringify({
+                    "account": email,
+                    "password": passwd,
+                    "remember": 0,
+                    "action": "login",
+                }),
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+            }).then(res => {
+                var fwLoginUrl = new URL(res.data.match(/window.location = "(.*)";/)[1].replaceAll(/\\\//g, "\/"));
+                var code = fwLoginUrl.searchParams.get("code");
+                if(state == fwLoginUrl.searchParams.get("state")) {
+                    axiosInstance({
+                        url: fwLoginUrl.href,
+                        method: "GET",
+                    }).then(res => {
+                        axiosInstance({
+                            url: `${environment.backendUrl}/token`,
+                            method: "post",
+                            data: qs.stringify({
+                                code_verifier: codeVerifier,
+								redirect_uri: environment.oauth.redirectURL,
+								code
+                            }),
+                        }).then(res => {
+                            /** @type {{id_token: string, token_type: string, expires_in: number, access_token: string, refresh_token: string}} */
+                            var tokens = res.data;
+
+                            axiosInstance.defaults.headers.authorization = `${tokens.token_type} ${tokens.access_token}`
+
+                            axiosInstance({
+                                url: `${environment.backendUrl}/api/user`,
+                                method: "get",
+                            }).then(async res => {
+                                /** @type {{abos: Object[], addonModuleLicenses: Object[], bookLicenses: {bookId: number, id: string, isbn: string, title: string, type: string}[], canChangeZSVPassword: boolean, groupId: number, id: number, params: Object, schools: Object[], type: string, username: string}} */
+                                var userData = res.data
+
+                                var book = (await prompts([{
+                                    type: "select",
+                                    name: "book",
+                                    message: "Select a book",
+                                    choices: userData.bookLicenses.map(book => {
+                                        return {
+                                            title: book.title,
+                                            value: book
+                                        }
+                                    })
+                                }])).book
+
+                                var bookID = book.bookId;
+
+                                    
+                                axiosInstance({
+                                    url: `${environment.backendUrl}/api/sync/${bookID}?materialtypes[]=default&materialtypes[]=addon`,
+                                    method: "get",
+                                }).then(async res => {
+
+                                    /** @typedef {{bookId: number, children: Chapter[], demo: boolean, filesize: Object, hasDemoMaterials: boolean, id: number, md5sum: Object, pagenumEnd: string, pagenumStart: string, removed: boolean, sortCode: number, title: string, type: string, version: number}} Chapter  */
+
+                                    /** @typedef {{bookId: number, categoryId: number, chapterIds: number[], demo: number, description: Object, file: string, filesize: number, filetype: string, grades: Object, id: number, keywords: string, md5sum: string, mimetype: string, pageIds: number[], pagesCount: Object, preview_filename: string, preview_filesize: number, preview_height: Object, preview_md5sum: string, preview_url: string, preview_width: Object, price: Object, publish_date: Object, removed: number, shop_url: Object, sortCode: number, subjects: Object, title: string, type: string, version: number, zipUrl: Object}} Material */
+
+                                    /** @typedef {{aemDorisID: Object, bookId: number, demo: boolean, id: number, images: {filesize: number, height: number, id: number, md5sum: string, pageId: number, removed: boolean, url: string, version: number, width: number}[], internalPagenum: number, name: string, removed: boolean, type: string, version: number}} Page */
+                                    
+                                    /** @type {{book: {addonmodules: Object[], chapterVersion: number, coverHash: string, coverUrl: string, demo: boolean, demoMaterials: boolean, description: string, hasZav: boolean, hidePageInput: boolean, id: number, isbn: string, lastModified: number, pageDataHash: string, pageDataSize: number, pagenum: number, publisher: string, region: string, removed: boolean, searchIndexHash: string, searchIndexSize: number, subtitle: string, title: string, version: number}[], categories: {addonModuleRelated: boolean, bookId: number, count: number, demo: number, downloadSize: number, guid: Object, id: number, removed: boolean, sortCode: number, title: string, version: number}[], chapters: Chapter[], materials: Material[], pages: Page[]}} */
+                                    var bookData = res.data;
+
+                                    var quality = (await prompts([{
+                                        type: "select",
+                                        name: "quality",
+                                        message: "Select the Quality",
+                                        choices: bookData.pages[0].images.map((img, idx) => {
+                                            return {
+                                                title: img.width + "x" + img.height,
+                                                value: idx
+                                            }
+                                        })
+                                    }])).quality
+
+                                    var selectableText = (await prompts([{
+                                        type: "toggle",
+                                        name: "selectableText",
+                                        message: "Selectable text",
+                                        initial: true,
+                                    }])).selectableText
+
+                                    
+                                    var name = book.title.replace(/[^a-zA-Z0-9 \(\)_\-,\.]/gi, '') + "_" + `${bookData.pages[0].images[quality].width}x${bookData.pages[0].images[quality].height}`;
+                                    var folder = ("./DownloadTemp/" + name + "/");
+                                    if (deleteAllOldTempImages && fs.existsSync(folder)) fs.rmSync(folder, {
+                                        recursive: true,
+                                    });
+                                    console.log("Deleted Temp files");
+                                    fs.mkdirSync(folder, {
+                                        recursive: true
+                                    });
+                                    console.log("created Folder: " + folder)
+
+                                    
+                                    var pageData = selectableText && await new Promise((resolve, reject) => {
+                                        console.log(`Downloading selectable Text`)
+                                        axiosInstance({
+                                            url: `${environment.backendUrl}/api/books/${bookID}/pageData`,
+                                            method: "get",
+                                        }).then(res => {
+                                            axiosInstance({
+                                                url: res.data.tempUrl,
+                                                method: "get",
+                                            }).then(async res => {
+                                                resolve(res.data);
+                                            }).catch(err => {
+                                                console.log(err)
+                                                console.log(`Could not load book text - 409`)
+                                                reject()
+                                            })
+                                        }).catch(err => {
+                                            console.log(err)
+                                            console.log(`Could not load book text - 408`)
+                                            reject()
+                                        })
+                                    })
+                                                
+                                    console.log(`Downloaded 0/${bookData.pages.length} pages`)
+
+                                    for(var pi = 0; pi < bookData.pages.length; pi++) {
+                                        var page = bookData.pages[pi];
+                                        var url = page.images[quality].url;
+                                        await new Promise((resolve, reject) => {
+                                            axios({
+                                                url: url,
+                                                method: "get",
+                                                responseType: 'stream',
+                                            }).then((res) => {
+                                                res.data.pipe(fs.createWriteStream(`${folder}${zeroPad(pi, 4)}-${page.id}-${page.name}.${url.split(".").slice(-1)[0]}`)).on('finish', () => {
+                                                    resolve();
+                                                })
+                                            }).catch(err => {
+                                                console.log(err);
+                                                console.log("Error downloading page " + pi)
+                                                resolve();
+                                            })
+                                        });
+
+                                        console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${pi+1}/${bookData.pages.length} pages`)
+                                    }
+
+                                    var size = [bookData.pages[0].images[0].width, bookData.pages[0].images[0].height];
+
+                                    console.log("Merging into PDF");
+
+                                    var doc = new PDFDoc({
+                                        margins: {
+                                            top: 0,
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0
+                                        },
+                                        autoFirstPage: false,
+                                        size,
+                                        bufferPages: true,
+                                    });
+                                    doc.pipe(fs.createWriteStream(name + ".pdf"))
+                                    doc.font('./Roboto-Thin.ttf')
+                                    var dir = fs.readdirSync(folder);
+                                    dir.sort().forEach((file, idx) => {
+                                        doc.addPage();
+                                        doc.image(folder + file, {
+                                            fit: size,
+                                            align: 'center',
+                                            valign: 'center'
+                                        });
+                                        if(selectableText) {
+                                            var thePageData = pageData[file.split("-")?.[1]]
+                                            thePageData?.txt?.split("").forEach((char, idx) => {
+                                                if(thePageData.cds[idx]) {
+                                                    var [ left, top, width, height ] = thePageData.cds[idx].map((l, i, a) => [
+                                                        () => a[0] / 1e5,
+                                                        () => a[2] / 1e5,
+                                                        () => a[1] / 1e5 - a[0] / 1e5,
+                                                        () => a[3] / 1e5 - a[2] / 1e5,
+                                                    ][i]()).map((l, i) => Math.round(l * size[i % 2 == 0 ? 0 : 1]));
+
+                                                    doc.save();
+                                                    //doc.rect(left, top, width, height).fillOpacity(0.5).fill("#1e1e1e")
+
+                                                    doc.translate(left, top);
+
+                                                    doc.scale(width/doc.widthOfString(char, {
+                                                        lineBreak: false,
+                                                    }), height/doc.heightOfString(char, { 
+                                                        lineBreak: false,
+                                                    }))/*.translate(0, (doc.heightOfString(char, {
+                                                        lineBreak: false,
+                                                    }) / 2));*/
+
+                                                    doc.fillOpacity(0)
+                                                    doc.text(char, 0, 0, {
+                                                        lineGap: 0,
+                                                        paragraphGap: 0,
+                                                        lineBreak: false,
+                                                        baseline: 'top',
+                                                        align: 'left',
+                                                    });
+                                                    doc.restore();
+                                                }
+                                            });
+
+
+                                        }
+                                        console.log(`\x1b[1A\x1b[2K\x1b[1GMerging into PDF (${idx}/${dir.length})`);
+                                    });
+                                    doc.end();
+                                    console.log("Wrote " + name + ".pdf")
+
+
+
+                                }).catch(err => {
+                                    console.log(err)
+                                    console.log(`Could not load book - 407`)
+                                })
+                            }).catch(err => {
+                                console.log(err)
+                                console.log(`Could not load books - 406`)
+                            })
+                        }).catch(err => {
+                            console.log(err)
+                            console.log(`Could not tokens - 405`)
+                        })
+                    }).catch(err => {
+                        console.log(err)
+                        console.log(`Could not login - 404`)
+                    })
+                } else {
+                    console.log(`Could not login - 403`)
+                }
+            }).catch(err => {
+                console.log(err)
+                console.log(`Could not login - 402`)
+            })
+        }).catch(err => {
+            console.log(err)
+            console.log(`Could not login - 401`)
+        })
+
+
+    }).catch(err => {
+        console.log(err)
+        console.log(`Could not login - 400`)
+    })
+}
+
+var sha256hash = crypto.createHash('sha256');
+
+function randomString(length) {
+    let e = "";
+    const n = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    for (let i = 0; i < length; i++) e += n.charAt(Math.floor(Math.random() * n.length));
+    return e
+}
+
+function cornelsen(email, passwd, deleteAllOldTempImages) {
     console.log("Logging in and getting Book list")
     const cookieJar = new tough.CookieJar();
     const axiosInstance = axios.create({
@@ -173,7 +441,7 @@ function cornelsen(email, passwd, isbn, name, quality, deleteAllOldTempImages) {
                                 })
                             }]).then(values => {
                                 console.log("Loading possible qualities")
-                                name = (values.license?.usageProduct?.heading || values.license?.salesProduct?.heading) + " - " + (values.license?.usageProduct?.subheading || values.license?.salesProduct?.subheading);
+                                var name = (values.license?.usageProduct?.heading || values.license?.salesProduct?.heading) + " - " + (values.license?.usageProduct?.subheading || values.license?.salesProduct?.subheading);
                                 axiosInstance({
                                     method: 'get',
                                     url: 'https://produkte.cornelsen.de/url/' + values.license?.usageProduct?.usagePlatformId + "/" + values.license?.usageProduct?.id,
@@ -458,7 +726,7 @@ function cornelsen(email, passwd, isbn, name, quality, deleteAllOldTempImages) {
         console.log(err)
     });
 }
-async function klett(email, passwd, isbn, name, quality, deleteAllOldTempImages) {
+async function klett(email, passwd, deleteAllOldTempImages) {
     const cookieJar = new tough.CookieJar();
     axios({
         url: "https://schueler.klett.de/arbeitsplatz/",
@@ -924,7 +1192,41 @@ async function klett(email, passwd, isbn, name, quality, deleteAllOldTempImages)
         console.log("Error fetching loginForm")
     });
 }
-function scook(email, passwd, isbn, name, quality, deleteAllOldTempImages) {
+async function scook(email, passwd, deleteAllOldTempImages) {
+    var prmpts = await prompts([
+        {
+            type: 'number',
+            name: 'quality',
+            message: "quality (0 = best quality)",
+        },
+        {
+            type: 'autocomplete',
+            name: 'isbn',
+            message: "Book",
+            choices: [
+                {
+                    title: 'Deutsch Klasse 9',
+                    value: '9783060626410'
+                }, {
+                    title: 'Englisch Klasse 9',
+                    value: '9783060328109'
+                },
+                {
+                    title: 'ISBN',
+                    value: 'customisbn'
+                }
+            ]
+        },
+        {
+            type: (prev, values) => prev == "customisbn" ? "text" : null,
+            name: 'isbn',
+            message: (prev, values) => 'ISBN'
+        }
+    ])
+
+    var quality = prmpts.quality;
+    var isbn = prmpts.isbn;
+
     const cookieJar = new tough.CookieJar();
     axios({
         url: "https://www.scook.de/action/scook/148/action/actionLogin",
@@ -1114,5 +1416,3 @@ function parseSortMipMap(mipMap) {
 function zeroPad(num, places) {
     return String(num).padStart(places, '0');
 }
-
-
