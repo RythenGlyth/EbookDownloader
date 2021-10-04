@@ -299,22 +299,29 @@ function westermann(email, passwd, deleteAllOldTempImages) {
 
                                                     doc.translate(left, top);
 
-                                                    doc.scale(width/doc.widthOfString(char, {
+                                                    if(doc.widthOfString(char, {
                                                         lineBreak: false,
-                                                    }), height/doc.heightOfString(char, { 
+                                                    }) > 0 && doc.heightOfString(char, {
                                                         lineBreak: false,
-                                                    }))/*.translate(0, (doc.heightOfString(char, {
-                                                        lineBreak: false,
-                                                    }) / 2));*/
+                                                    }) > 0) {
+                                                        doc.scale(width/doc.widthOfString(char, {
+                                                            lineBreak: false,
+                                                        }), height/doc.heightOfString(char, { 
+                                                            lineBreak: false,
+                                                        }))/*.translate(0, (doc.heightOfString(char, {
+                                                            lineBreak: false,
+                                                        }) / 2));*/
+    
+                                                        doc.fillOpacity(0)
+                                                        doc.text(char, 0, 0, {
+                                                            lineGap: 0,
+                                                            paragraphGap: 0,
+                                                            lineBreak: false,
+                                                            baseline: 'top',
+                                                            align: 'left',
+                                                        });
+                                                    }
 
-                                                    doc.fillOpacity(0)
-                                                    doc.text(char, 0, 0, {
-                                                        lineGap: 0,
-                                                        paragraphGap: 0,
-                                                        lineBreak: false,
-                                                        baseline: 'top',
-                                                        align: 'left',
-                                                    });
                                                     doc.restore();
                                                 }
                                             });
