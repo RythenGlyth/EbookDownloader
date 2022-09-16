@@ -33,7 +33,7 @@ prompts([
                 value: "klett"
             },
             {
-                title: 'Klett (Scook) - old',
+                title: 'Klett (Cornelsen) - old',
                 value: "scook"
             },
             {
@@ -286,7 +286,7 @@ function westermann(email, passwd, deleteAllOldTempImages) {
                                         bufferPages: true,
                                     });
                                     doc.pipe(fs.createWriteStream(name + ".pdf"))
-                                    doc.font('./Roboto-Thin.ttf')
+                                    doc.font('./unifont-15.0.01.ttf')
                                     var dir = fs.readdirSync(folder);
                                     dir.sort().forEach((file, idx) => {
                                         doc.addPage();
