@@ -29,11 +29,11 @@ prompts([
                 value: "cornelsen"
             },
             {
-                title: 'Klett',
+                title: 'Klett - old',
                 value: "klett"
             },
             {
-                title: 'Scook',
+                title: 'Klett (Scook) - old',
                 value: "scook"
             },
             {
@@ -89,15 +89,27 @@ function westermann(email, passwd, deleteAllOldTempImages) {
         }
     });
     axiosInstance({
-        url: "https://bibox2.westermann.de/assets/environments/environment.json",
+        url: "https://bibox2.westermann.de/main.8db51796d61b8ce5.js",
         method: "GET"
     }).then(res => {
         /**
          * @type {{production: boolean, dataPrivacyUrl: string, backendUrl: string, backendLogin: boolean, frontendUrl: string, frontendUrlIOS: string, accountAdminUrl: string, changePasswordUrl: string, zsv: { live: boolean, url: string, }, sentry: { enabled: boolean, dsn: string, }, matomoUrl: string, matomoSiteId: number, maxUploadFileSize: {        forTeacher: number, forUser: number, }, pingTimer: number, oauth: { loginURL: string, logoutURL: string, postLogoutRedirect: string, redirectURL: string, clientID: string, protocol: string, }}}
         }}
          */
-        var environment = res.data;
+        var mainjs = res.data;
+        var p = mainjs.match(/environmentName\w*:\w*/).index;
+        var p0 = p;
+        for(var braces = 0; braces != -1; p0--) {
+            if(mainjs[p0] == "}") braces++;
+            if(mainjs[p0] == "{") braces--;
+        }
+        var p1 = p;
+        for(var braces = 0; braces != -1; p1++) {
+            if(mainjs[p1] == "{") braces++;
+            if(mainjs[p1] == "}") braces--;
+        }
 
+        eval("var environment =" + mainjs.slice(p0+1,p1))
         
         var codeVerifier = randomString(50)
         var codeChallenge = sha256hash.update(codeVerifier).digest('base64').replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
@@ -285,14 +297,17 @@ function westermann(email, passwd, deleteAllOldTempImages) {
                                         });
                                         if(selectableText) {
                                             var thePageData = pageData[file.split("-")?.[1]]
-                                            thePageData?.txt?.split("").forEach((char, idx) => {
+                                            var txts = thePageData?.txt?.split("")
+                                            txts.forEach((char, idx) => {
                                                 if(thePageData.cds[idx]) {
                                                     var [ left, top, width, height ] = thePageData.cds[idx].map((l, i, a) => [
                                                         () => a[0] / 1e5,
                                                         () => a[2] / 1e5,
-                                                        () => a[1] / 1e5 - a[0] / 1e5,
+                                                        () => (a[1] / 1e5 - a[0] / 1e5) * ((txts[idx+1] ?? " ") == " " ? 2 : 1),
                                                         () => a[3] / 1e5 - a[2] / 1e5,
                                                     ][i]()).map((l, i) => Math.round(l * size[i % 2 == 0 ? 0 : 1]));
+
+                                                    if((txts[idx+1] ?? " ") == " ") char += " "
 
                                                     doc.save();
                                                     //doc.rect(left, top, width, height).fillOpacity(0.5).fill("#1e1e1e")
