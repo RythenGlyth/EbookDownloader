@@ -401,7 +401,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
         jar: cookieJar,
         withCredentials: true,
         headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36',
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
         }
     });
@@ -430,6 +430,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                     url: 'https://id.cornelsen.de/oxauth/login.htm',
                     data: qs.stringify(loginFormData)
                 }).then(res => {
+                    console.log("Logged in successfully")
                     axiosInstance({
                         method: 'get',
                         url: "https://www.cornelsen.de/shop/capiadapter/link/eBibliothek"
@@ -437,7 +438,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                         //console.log(cookieJar.toJSON().cookies.find(c => c.key == "cornelsen-jwt").value);
                         axiosInstance({
                             method: 'post',
-                            url: 'https://mylibrary-api.prod.cornelsen.de/',
+                            url: 'https://mein.cornelsen.de/bibliothek/api',
                             headers: {
                                 "authorization": "Bearer " + cookieJar.toJSON().cookies.find(c => c.key == "cornelsen-jwt").value,
                                 "content-type": "application/json",
@@ -446,7 +447,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                             },
                             data: {
                                 operationName: "licenses",
-                                query: "query licenses {\n  licenses {\n    activeUntil\n    isExpired\n    isNew\n    coverUrl\n    salesProduct {\n      id\n      url\n      heading\n      shortTitle\n      subheading\n      info\n      coverUrl\n      licenseModelId\n      fullVersionId\n      fullVersionUrl\n      __typename\n    }\n    usageProduct {\n      id\n      url\n      heading\n      shortTitle\n      subheading\n      info\n      coverUrl\n      usagePlatformId\n      __typename\n    }\n    __typename\n  }\n}\n",
+                                query: "query licenses {\n  licenses {\n    activeUntil\n    isExpired\n    isNew\n    coverUrl\n    canBeStarted\n    salesProduct {\n      id\n      url\n      heading\n      shortTitle\n      subheading\n      info\n      coverUrl\n      licenseModelId\n      fullVersionId\n      fullVersionUrl\n      __typename\n    }\n    usageProduct {\n      id\n      url\n      heading\n      shortTitle\n      subheading\n      info\n      coverUrl\n      usagePlatformId\n      __typename\n    }\n    __typename\n  }\n}\n",
                                 variables: {}
                             }
                         }).then(res => {
@@ -461,267 +462,303 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                                         value: l
                                     }
                                 })
-                            }]).then(values => {
-                                console.log("Loading possible qualities")
-                                var name = (values.license?.usageProduct?.heading || values.license?.salesProduct?.heading) + " - " + (values.license?.usageProduct?.subheading || values.license?.salesProduct?.subheading);
+                            }]).then(async values => {
                                 axiosInstance({
-                                    method: 'get',
-                                    url: 'https://produkte.cornelsen.de/url/' + values.license?.usageProduct?.usagePlatformId + "/" + values.license?.usageProduct?.id,
-                                }).then(res => {
+                                    method: 'post',
+                                    url: 'https://mein.cornelsen.de/bibliothek/api',
+                                    headers: {
+                                        "authorization": "Bearer " + cookieJar.toJSON().cookies.find(c => c.key == "cornelsen-jwt").value,
+                                        "content-type": "application/json",
+                                        "accept": "*/*",
+                                        "origin": "https://mein.cornelsen.de",
+                                    },
+                                    data: {
+                                        operationName: "startProduct",
+                                        query: "mutation startProduct($productId: ProductId!) {\n  startProduct(productId: $productId)\n}\n",
+                                        variables: {
+                                            productId: values.license?.usageProduct?.id || values.license?.salesProduct?.id
+                                        }
+                                    }
+                                }).then((res) => {
+                                    console.log("Loading possible qualities")
+                                    var name = (values.license?.usageProduct?.heading || values.license?.salesProduct?.heading) + " - " + (values.license?.usageProduct?.subheading || values.license?.salesProduct?.subheading);
                                     axiosInstance({
                                         method: 'get',
-                                        url: `https://ebook.cornelsen.de/uma20/api/v2/pspdfkitjwt/${values.license?.usageProduct?.id}/${values.license?.salesProduct?.fullVersionId}`,
-                                        headers: {
-                                            "accept": "application/json",
-                                            "x-cv-app-identifier": "uma_web_2021.16.3",
-                                            "authorization": "Bearer " + cookieJar.toJSON().cookies.find(c => c.key == "cornelsen-jwt").value,
-                                        }
+                                        url: res.data?.data?.startProduct
+                                        //url: 'https://produkte.cornelsen.de/url/' + values.license?.usageProduct?.usagePlatformId + "/" + values.license?.usageProduct?.id + "/",
                                     }).then(res => {
-                                        var pspdfkitjwt = res.data
                                         axiosInstance({
-                                            method: 'post',
-                                            url: `https://uma20-pspdfkit.prod.aws.cornelsen.de/i/d/${values.license?.salesProduct?.fullVersionId}/auth`,
-                                            data: {
-                                                "jwt": pspdfkitjwt,
-                                                "origin": `https://ebook.cornelsen.de/${values.license?.usageProduct?.id}/willkommen`
-                                            },
+                                            url: "https://ebook.cornelsen.de/uma20/api/v2/umas/" + values.license?.usageProduct?.id,
+                                            method: "get",
                                             headers: {
-                                                "pspdfkit-platform": "web",
-                                                "pspdfkit-version": "protocol=4, client=2021.5.1, client-git=0c1f494f8f",
-                                                "referer": "https://ebook.cornelsen.de/",
-                                                "origin": "https://ebook.cornelsen.de",
+                                                "authorization": "Bearer " + cookieJar.toJSON().cookies.find(c => c.key == "cornelsen-jwt").value,
+                                                "content-type": "application/json",
+                                                "accept": "*/*",
                                             }
                                         }).then(res => {
-                                            var pspdfkitauthdata = res.data;
-                                            //var qualityScale = quality < pspdfkitauthdata.allowedTileScales.length ? pspdfkitauthdata.allowedTileScales.reverse()[quality] : pspdfkitauthdata.allowedTileScales[0];
+                                            var bookData = res.data
                                             axiosInstance({
                                                 method: 'get',
-                                                url: `https://uma20-pspdfkit.prod.aws.cornelsen.de/i/d/${values.license?.salesProduct?.fullVersionId}/h/${pspdfkitauthdata.layerHandle}/document.json`,
+                                                url: `https://ebook.cornelsen.de/uma20/api/v2/pspdfkitjwt/${bookData.module?.moduleIsbn}/${bookData.ebookIsbnSbNum}`,
                                                 headers: {
-                                                    "pspdfkit-platform": "web",
-                                                    "pspdfkit-version": "protocol=4, client=2021.5.1, client-git=0c1f494f8f",
-                                                    "X-PSPDFKit-Token": pspdfkitauthdata.token,
+                                                    "accept": "application/json",
+                                                    "x-cv-app-identifier": "uma_web_2022.19.1",
+                                                    "authorization": "Bearer " + cookieJar.toJSON().cookies.find(c => c.key == "cornelsen-jwt").value,
                                                 }
                                             }).then(res => {
-                                                var pagesData = res.data.data;
-                                                prompts([{
-                                                    type: 'select',
-                                                    name: 'quality',
-                                                    message: "Quality",
-                                                    choices: pspdfkitauthdata.allowedTileScales.map(q => {
-                                                        return {
-                                                            title: `${Math.floor(pagesData.pages[0].width * q)} x ${Math.floor(pagesData.pages[0].height * q)}`,
-                                                            value: q
+                                                var pspdfkitjwt = res.data
+                                                axiosInstance({
+                                                    method: 'post',
+                                                    url: `https://uma20-pspdfkit.prod.aws.cornelsen.de/i/d/${bookData.ebookIsbnSbNum}/auth`,
+                                                    data: {
+                                                        "jwt": pspdfkitjwt,
+                                                        "origin": `https://ebook.cornelsen.de/${bookData.module?.moduleIsbn}/willkommen`
+                                                    },
+                                                    headers: {
+                                                        "pspdfkit-platform": "web",
+                                                        "pspdfkit-version": "protocol=4, client=2022.4.0, client-git=cef59f9397",
+                                                        "referer": "https://ebook.cornelsen.de/",
+                                                        "origin": "https://ebook.cornelsen.de",
+                                                    }
+                                                }).then(res => {
+                                                    var pspdfkitauthdata = res.data;
+                                                    //var qualityScale = quality < pspdfkitauthdata.allowedTileScales.length ? pspdfkitauthdata.allowedTileScales.reverse()[quality] : pspdfkitauthdata.allowedTileScales[0];
+                                                    axiosInstance({
+                                                        method: 'get',
+                                                        url: `https://uma20-pspdfkit.prod.aws.cornelsen.de/i/d/${bookData.ebookIsbnSbNum}/h/${pspdfkitauthdata.layerHandle}/document.json`,
+                                                        headers: {
+                                                            "pspdfkit-platform": "web",
+                                                            "pspdfkit-version": "protocol=4, client=2022.4.0, client-git=cef59f9397",
+                                                            "X-PSPDFKit-Token": pspdfkitauthdata.token,
                                                         }
-                                                    })
-                                                },{
-                                                    type: "text",
-                                                    name: "extension",
-                                                    message: "Image File Extension",
-                                                    initial: "jpg",
-                                                },{
-                                                    type: "text",
-                                                    name: "magickquality",
-                                                    message: "Image Magick Quality in % (100% - 100% of size, 95% - 40% of size, 90% - 25% of size, 85% - 15% of size)",
-                                                    initial: "90",
-                                                },{
-                                                    type: "toggle",
-                                                    name: "selectableText",
-                                                    message: "Selectable Text",
-                                                    initial: true,
-                                                }]).then(values2 => {
-                                                    var filename = name.replace(/[^a-zA-Z0-9 \(\)_\-,\.]/gi, '') + `_${Math.floor(pagesData.pages[0].width * values2.quality)}x${Math.floor(pagesData.pages[0].height * values2.quality)}_${values2.magickquality}q`;
-                                                    var tmpFolder = "./DownloadTemp/" + filename + "/";
-                                                    if (deleteAllOldTempImages && fs.existsSync(tmpFolder)) fs.rmSync(tmpFolder, {
-                                                        recursive: true,
-                                                    });
-                                                    fs.mkdir(tmpFolder, {
-                                                        recursive: true
-                                                    }, async () => {
-                                                        /*Promise.all(pagesData.pages.map(p => {
-                                                            return new Promise((resolve, reject) => {
-                                                                axiosInstance({
-                                                                    method: 'get',
-                                                                    url: `https://uma20-pspdfkit.prod.aws.cornelsen.de/i/d/${values.license?.salesProduct?.fullVersionId}/h/${pspdfkitauthdata.layerHandle}/page-${p.pageIndex}-dimensions-${Math.floor(p.width * values2.quality)}-${Math.floor(p.height * values2.quality)}-tile-0-0-${Math.floor(p.width * values2.quality)}-${Math.floor(p.height * values2.quality)}`,
-                                                                    headers: {
-                                                                        "x-pspdfkit-image-token": pspdfkitauthdata.imageToken,
-                                                                        "Accept": "image/webp,*//*",
-                                                                        "Referer": "https://ebook.cornelsen.de/",
-                                                                    },
-                                                                    responseType: 'stream',
-                                                                    timeout: 60000,
-                                                                    httpsAgent: new https.Agent({ keepAlive: true }),
-                                                                }).then(res => {
-                                                                    //fs.createWriteStream(`${tmpFolder}${zeroPad(p.pageIndex, 4)}-${p.pageLabel}.webp`).write(res.data);
-                                                                    res.data.pipe(fs.createWriteStream(`${tmpFolder}${zeroPad(p.pageIndex, 4)}-${p.pageLabel}.webp`))
-                                                                    resolve();
-                                                                }).catch(err => {
-                                                                    console.log(`Could not load page ${p.pageIndex} - 760`)
-                                                                    console.log(err)
-                                                                    reject();
-                                                                })
+                                                    }).then(res => {
+                                                        var pagesData = res.data.data;
+                                                        prompts([{
+                                                            type: 'select',
+                                                            name: 'quality',
+                                                            message: "Quality",
+                                                            choices: pspdfkitauthdata.allowedTileScales.map(q => {
+                                                                return {
+                                                                    title: `${Math.floor(pagesData.pages[0].width * q)} x ${Math.floor(pagesData.pages[0].height * q)}`,
+                                                                    value: q
+                                                                }
                                                             })
-                                                        })).then(() => {
-                                                            console.log(`Downloaded all Pages`)
-                                                        }).catch(err => {
-                                                            console.log(`Could not load all pages - 761`)
-                                                            console.log(err)
-                                                        })*/
+                                                        },{
+                                                            type: "text",
+                                                            name: "extension",
+                                                            message: "Image File Extension",
+                                                            initial: "jpg",
+                                                        },{
+                                                            type: "text",
+                                                            name: "magickquality",
+                                                            message: "Image Magick Quality in % (100% - 100% of size, 95% - 40% of size, 90% - 25% of size, 85% - 15% of size)",
+                                                            initial: "90",
+                                                        },{
+                                                            type: "toggle",
+                                                            name: "selectableText",
+                                                            message: "Selectable Text",
+                                                            initial: true,
+                                                        }]).then(values2 => {
+                                                            var filename = name.replace(/[^a-zA-Z0-9 \(\)_\-,\.]/gi, '') + `_${Math.floor(pagesData.pages[0].width * values2.quality)}x${Math.floor(pagesData.pages[0].height * values2.quality)}_${values2.magickquality}q`;
+                                                            var tmpFolder = "./DownloadTemp/" + filename + "/";
+                                                            if (deleteAllOldTempImages && fs.existsSync(tmpFolder)) fs.rmSync(tmpFolder, {
+                                                                recursive: true,
+                                                            });
+                                                            fs.mkdir(tmpFolder, {
+                                                                recursive: true
+                                                            }, async () => {
+                                                                /*Promise.all(pagesData.pages.map(p => {
+                                                                    return new Promise((resolve, reject) => {
+                                                                        axiosInstance({
+                                                                            method: 'get',
+                                                                            url: `https://uma20-pspdfkit.prod.aws.cornelsen.de/i/d/${values.license?.salesProduct?.fullVersionId}/h/${pspdfkitauthdata.layerHandle}/page-${p.pageIndex}-dimensions-${Math.floor(p.width * values2.quality)}-${Math.floor(p.height * values2.quality)}-tile-0-0-${Math.floor(p.width * values2.quality)}-${Math.floor(p.height * values2.quality)}`,
+                                                                            headers: {
+                                                                                "x-pspdfkit-image-token": pspdfkitauthdata.imageToken,
+                                                                                "Accept": "image/webp,*//*",
+                                                                                "Referer": "https://ebook.cornelsen.de/",
+                                                                            },
+                                                                            responseType: 'stream',
+                                                                            timeout: 60000,
+                                                                            httpsAgent: new https.Agent({ keepAlive: true }),
+                                                                        }).then(res => {
+                                                                            //fs.createWriteStream(`${tmpFolder}${zeroPad(p.pageIndex, 4)}-${p.pageLabel}.webp`).write(res.data);
+                                                                            res.data.pipe(fs.createWriteStream(`${tmpFolder}${zeroPad(p.pageIndex, 4)}-${p.pageLabel}.webp`))
+                                                                            resolve();
+                                                                        }).catch(err => {
+                                                                            console.log(`Could not load page ${p.pageIndex} - 760`)
+                                                                            console.log(err)
+                                                                            reject();
+                                                                        })
+                                                                    })
+                                                                })).then(() => {
+                                                                    console.log(`Downloaded all Pages`)
+                                                                }).catch(err => {
+                                                                    console.log(`Could not load all pages - 761`)
+                                                                    console.log(err)
+                                                                })*/
 
-                                                        var pagesText = {};
+                                                                var pagesText = {};
 
-                                                        var errored = false;
-                                                        console.log(`Downloaded 0/${pagesData.pages.length}`)
-                                                        var pi = 0;
-                                                        for(p of pagesData.pages) {
-                                                            pi++;
-                                                            if(errored) {
-                                                                break;
-                                                            }
-                                                            await new Promise((resolve, reject) => {
-                                                                axiosInstance({
-                                                                    method: 'get',
-                                                                    url: `https://uma20-pspdfkit.prod.aws.cornelsen.de/i/d/${values.license?.salesProduct?.fullVersionId}/h/${pspdfkitauthdata.layerHandle}/page-${p.pageIndex}-dimensions-${Math.floor(p.width * values2.quality)}-${Math.floor(p.height * values2.quality)}-tile-0-0-${Math.floor(p.width * values2.quality)}-${Math.floor(p.height * values2.quality)}`,
-                                                                    headers: {
-                                                                        "x-pspdfkit-image-token": pspdfkitauthdata.imageToken,
-                                                                        "Accept": "image/webp,*/*",
-                                                                        "Referer": "https://ebook.cornelsen.de/",
-                                                                    },
-                                                                    responseType: 'stream',
-                                                                }).then(res => {
-                                                                    var imageFile = `${tmpFolder}${zeroPad(p.pageIndex, 4)}-${p.pageLabel}.jpg`;
-                                                                    magickProcess = spawn("magick", ["-", "-quality", `${values2.magickquality}%`, `${values2.extension}:-`]);
+                                                                var errored = false;
+                                                                console.log(`Downloaded 0/${pagesData.pages.length}`)
+                                                                var pi = 0;
+                                                                for(p of pagesData.pages) {
+                                                                    pi++;
+                                                                    if(errored) {
+                                                                        break;
+                                                                    }
+                                                                    await new Promise((resolve, reject) => {
+                                                                        axiosInstance({
+                                                                            method: 'get',
+                                                                            url: `https://uma20-pspdfkit.prod.aws.cornelsen.de/i/d/${bookData.ebookIsbnSbNum}/h/${pspdfkitauthdata.layerHandle}/page-${p.pageIndex}-dimensions-${Math.floor(p.width * values2.quality)}-${Math.floor(p.height * values2.quality)}-tile-0-0-${Math.floor(p.width * values2.quality)}-${Math.floor(p.height * values2.quality)}`,
+                                                                            headers: {
+                                                                                "x-pspdfkit-image-token": pspdfkitauthdata.imageToken,
+                                                                                "Accept": "image/webp,*/*",
+                                                                                "Referer": "https://ebook.cornelsen.de/",
+                                                                            },
+                                                                            responseType: 'stream',
+                                                                        }).then(res => {
+                                                                            var imageFile = `${tmpFolder}${zeroPad(p.pageIndex, 4)}-${p.pageLabel}.jpg`;
+                                                                            magickProcess = spawn("magick", ["-", "-quality", `${values2.magickquality}%`, `${values2.extension}:-`]);
 
-                                                                    magickProcess.stdout.pipe(fs.createWriteStream(imageFile)).on('finish', (s) => {
+                                                                            magickProcess.stdout.pipe(fs.createWriteStream(imageFile)).on('finish', (s) => {
 
-                                                                        if(values2.selectableText) {
-                                                                            axiosInstance({
-                                                                                method: 'get',
-                                                                                url: `https://uma20-pspdfkit.prod.aws.cornelsen.de/i/d/${values.license?.salesProduct?.fullVersionId}/h/${pspdfkitauthdata.layerHandle}/page-${p.pageIndex}-text`,
-                                                                                headers: {
-                                                                                    "X-PSPDFKit-Token": pspdfkitauthdata.token,
-                                                                                    "Accept": "image/webp,*/*",
-                                                                                    "Referer": "https://ebook.cornelsen.de/",
-                                                                                },
-                                                                            }).then(res => {
-                                                                                pagesText[p.pageIndex] = res.data?.textLines;
-                                                                                resolve();
-                                                                            }).catch(err => {
-                                                                                console.log(`Could not load page ${p.pageIndex} text - 763`)
+                                                                                if(values2.selectableText) {
+                                                                                    axiosInstance({
+                                                                                        method: 'get',
+                                                                                        url: `https://uma20-pspdfkit.prod.aws.cornelsen.de/i/d/${bookData.ebookIsbnSbNum}/h/${pspdfkitauthdata.layerHandle}/page-${p.pageIndex}-text`,
+                                                                                        headers: {
+                                                                                            "X-PSPDFKit-Token": pspdfkitauthdata.token,
+                                                                                            "Accept": "image/webp,*/*",
+                                                                                            "Referer": "https://ebook.cornelsen.de/",
+                                                                                        },
+                                                                                    }).then(res => {
+                                                                                        pagesText[p.pageIndex] = res.data?.textLines;
+                                                                                        resolve();
+                                                                                    }).catch(err => {
+                                                                                        console.log(`Could not load page ${p.pageIndex} text - 763`)
+                                                                                        errored = true;
+                                                                                        resolve();
+                                                                                        console.log(err)
+                                                                                    });
+                                                                                } else {
+                                                                                    resolve();
+                                                                                }
+                                                                            }).on('error', (err) => {
+                                                                                console.log(`Could not save page ${p.pageIndex} - 762`)
+                                                                                console.log("error")
+                                                                                console.log(err)
                                                                                 errored = true;
                                                                                 resolve();
-                                                                                console.log(err)
-                                                                            });
-                                                                        } else {
+                                                                            })
+                                                                            res.data.pipe(magickProcess.stdin)
+                                                                        }).catch(err => {
+                                                                            console.log(`Could not load page ${p.pageIndex} - 760`)
+                                                                            errored = true;
                                                                             resolve();
-                                                                        }
-                                                                    }).on('error', (err) => {
-                                                                        console.log(`Could not save page ${p.pageIndex} - 762`)
-                                                                        console.log("error")
-                                                                        console.log(err)
-                                                                        errored = true;
-                                                                        resolve();
+                                                                            console.log(err)
+                                                                        })
                                                                     })
-                                                                    res.data.pipe(magickProcess.stdin)
-                                                                }).catch(err => {
-                                                                    console.log(`Could not load page ${p.pageIndex} - 760`)
-                                                                    errored = true;
-                                                                    resolve();
-                                                                    console.log(err)
-                                                                })
-                                                            })
-                                                            console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${pi}/${pagesData.pages.length} pages`)
-                                                        }
-                                                        if(errored) {
-                                                            console.log(`Could not load all pages - 761`)
-                                                        } else {
-                                                            console.log(`Downloaded all Pages, now creating PDF Document`)
-                                                            var doc = new PDFDoc({
-                                                                margins: {
-                                                                    top: 0,
-                                                                    bottom: 0,
-                                                                    left: 0,
-                                                                    right: 0
-                                                                },
-                                                                autoFirstPage: false,
-                                                                size: [pagesData.pages[0].width, pagesData.pages[0].height]
-                                                            });
-                                                            doc.pipe(fs.createWriteStream(filename + ".pdf"))
-                                                            doc.font('./unifont-15.0.01.ttf')
-                                                            var dir = fs.readdirSync(tmpFolder);
-                                                            dir.sort().forEach((file, idx) => {
-                                                                doc.addPage();
-                                                                doc.image(tmpFolder + file, {
-                                                                    fit: [pagesData.pages[0].width, pagesData.pages[0].height],
-                                                                    align: 'center',
-                                                                    valign: 'center'
-                                                                });
-                                                                if(values2.selectableText) {
-                                                                    pagesText[/*idx*/ parseInt(file.split("-")[0])].forEach(line => {
-                                                                        if(line.contents.length > 0) {
-                                                                            doc.save();
-                                                                            //doc.rect(line.left, line.top, line.width, line.height).fillOpacity(0.5).fill("#1e1e1e")
+                                                                    console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${pi}/${pagesData.pages.length} pages`)
+                                                                }
+                                                                if(errored) {
+                                                                    console.log(`Could not load all pages - 761`)
+                                                                } else {
+                                                                    console.log(`Downloaded all Pages, now creating PDF Document`)
+                                                                    var doc = new PDFDoc({
+                                                                        margins: {
+                                                                            top: 0,
+                                                                            bottom: 0,
+                                                                            left: 0,
+                                                                            right: 0
+                                                                        },
+                                                                        autoFirstPage: false,
+                                                                        size: [pagesData.pages[0].width, pagesData.pages[0].height]
+                                                                    });
+                                                                    doc.pipe(fs.createWriteStream(filename + ".pdf"))
+                                                                    doc.font('./unifont-15.0.01.ttf')
+                                                                    var dir = fs.readdirSync(tmpFolder);
+                                                                    dir.sort().forEach((file, idx) => {
+                                                                        doc.addPage();
+                                                                        doc.image(tmpFolder + file, {
+                                                                            fit: [pagesData.pages[0].width, pagesData.pages[0].height],
+                                                                            align: 'center',
+                                                                            valign: 'center'
+                                                                        });
+                                                                        if(values2.selectableText) {
+                                                                            pagesText[/*idx*/ parseInt(file.split("-")[0])].forEach(line => {
+                                                                                if(line.contents.length > 0) {
+                                                                                    doc.save();
+                                                                                    //doc.rect(line.left, line.top, line.width, line.height).fillOpacity(0.5).fill("#1e1e1e")
 
-                                                                            doc.translate(line.left, line.top);
-                                                                            if(line.height > line.width && line.height / line.contents.length < line.width) {
-                                                                                doc.rotate(90).scale(line.height/doc.widthOfString(line.contents, {
-                                                                                    lineBreak: false,
-                                                                                }), line.width/doc.heightOfString(line.contents, { 
-                                                                                    lineBreak: false,
-                                                                                }) ).translate(0, -(doc.heightOfString(line.contents, { 
-                                                                                    lineBreak: false,
-                                                                                }) / 2))
-                                                                            } else {
-                                                                                try {
-                                                                                    doc.scale(line.width/doc.widthOfString(line.contents, {
+                                                                                    doc.translate(line.left, line.top);
+                                                                                    if(line.height > line.width && line.height / line.contents.length < line.width) {
+                                                                                        doc.rotate(90).scale(line.height/doc.widthOfString(line.contents, {
+                                                                                            lineBreak: false,
+                                                                                        }), line.width/doc.heightOfString(line.contents, { 
+                                                                                            lineBreak: false,
+                                                                                        }) ).translate(0, -(doc.heightOfString(line.contents, { 
+                                                                                            lineBreak: false,
+                                                                                        }) / 2))
+                                                                                    } else {
+                                                                                        try {
+                                                                                            doc.scale(line.width/doc.widthOfString(line.contents, {
+                                                                                                lineBreak: false,
+                                                                                            }), line.height/doc.heightOfString(line.contents, { 
+                                                                                                lineBreak: false,
+                                                                                            })).translate(0, (doc.heightOfString(line.contents, {
+                                                                                                lineBreak: false,
+                                                                                            }) / 2));
+                                                                                        } catch(err) {
+                                                                                            console.log(err);
+                                                                                            console.log(line.contents, line.left, line.top, line.width, line.height);
+                                                                                            process.exit(1);
+                                                                                        }
+                                                                                    }
+                                                                                    doc.fillOpacity(0)
+                                                                                    doc.text(line.contents, 0, 0, {
+                                                                                        lineGap: 0,
+                                                                                        paragraphGap: 0,
                                                                                         lineBreak: false,
-                                                                                    }), line.height/doc.heightOfString(line.contents, { 
-                                                                                        lineBreak: false,
-                                                                                    })).translate(0, (doc.heightOfString(line.contents, {
-                                                                                        lineBreak: false,
-                                                                                    }) / 2));
-                                                                                } catch(err) {
-                                                                                    console.log(err);
-                                                                                    console.log(line.contents, line.left, line.top, line.width, line.height);
-                                                                                    process.exit(1);
+                                                                                        baseline: 'middle',
+                                                                                        align: 'left',
+                                                                                    });
+                                                                                    doc.restore();
                                                                                 }
-                                                                            }
-                                                                            doc.fillOpacity(0)
-                                                                            doc.text(line.contents, 0, 0, {
-                                                                                lineGap: 0,
-                                                                                paragraphGap: 0,
-                                                                                lineBreak: false,
-                                                                                baseline: 'middle',
-                                                                                align: 'left',
                                                                             });
-                                                                            doc.restore();
+
+
                                                                         }
                                                                     });
-
-
+                                                                    doc.end();
+                                                                    console.log(`finished creating PDF Document, saved at: ${filename}.pdf`)
                                                                 }
                                                             });
-                                                            doc.end();
-                                                            console.log(`finished creating PDF Document, saved at: ${filename}.pdf`)
-                                                        }
+                                                        })
+                                                    }).catch(err => {
+                                                        console.log("Could not load book pages - 761")
+                                                        console.log(err)
                                                     });
-                                                })
+                                                }).catch(err => {
+                                                    console.log("Could not authenticate PSPDFKIT - 760")
+                                                    console.log(err)
+                                                });
                                             }).catch(err => {
-                                                console.log("Could not load book pages - 759")
+                                                console.log("Could not authenticate PSPDFKIT - 759")
                                                 console.log(err)
                                             });
                                         }).catch(err => {
-                                            console.log("Could not authenticate PSPDFKIT - 758")
+                                            console.log("Could not load book data - 758")
                                             console.log(err)
-                                        });
+                                        })
                                     }).catch(err => {
-                                        console.log("Could not authenticate PSPDFKIT - 757")
+                                        console.log("Could not load book - 757")
                                         console.log(err)
                                     });
                                 }).catch(err => {
-                                    console.log("Could not load book - 756")
+                                    console.log("Could not start product - 756")
                                     console.log(err)
-                                });
+                                })
                             });
                         }).catch(err => {
                             console.log("Could not get library - 755")
