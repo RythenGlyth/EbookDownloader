@@ -620,8 +620,9 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                                                                         }).then(res => {
                                                                             var imageFile = `${tmpFolder}${zeroPad(p.pageIndex, 4)}-${p.pageLabel}.jpg`;
                                                                             magickProcess = spawn("magick", ["-", "-quality", `${values2.magickquality}%`, `${values2.extension}:-`]);
-
-                                                                            magickProcess.stdout.pipe(fs.createWriteStream(imageFile)).on('finish', (s) => {
+                                                                            ffmpegProcess = spawn("ffmpeg", ["-f", "jpeg_pipe", "-i", "-", "-f", "image2", "-"]);
+                                                                            
+                                                                            ffmpegProcess.stdout.pipe(fs.createWriteStream(imageFile)).on('finish', (s) => {
 
                                                                                 if(values2.selectableText) {
                                                                                     axiosInstance({
@@ -651,6 +652,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                                                                                 errored = true;
                                                                                 resolve();
                                                                             })
+                                                                            magickProcess.stdout.pipe(ffmpegProcess.stdin)
                                                                             res.data.pipe(magickProcess.stdin)
                                                                         }).catch(err => {
                                                                             console.log(`Could not load page ${p.pageIndex} - 760`)
