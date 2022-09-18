@@ -647,7 +647,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                                                                 size: [pagesData.pages[0].width, pagesData.pages[0].height]
                                                             });
                                                             doc.pipe(fs.createWriteStream(filename + ".pdf"))
-                                                            doc.font('./Roboto-Thin.ttf')
+                                                            doc.font('./unifont-15.0.01.ttf')
                                                             var dir = fs.readdirSync(tmpFolder);
                                                             dir.sort().forEach((file, idx) => {
                                                                 doc.addPage();
@@ -1122,7 +1122,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                             bufferPages: true,
                         });
                         doc.pipe(fs.createWriteStream(name + ".pdf"))
-                        doc.font('./Roboto-Thin.ttf')
+                        doc.font('./unifont-15.0.01.ttf')
                         var dir = fs.readdirSync(folder);
                         dir.sort().forEach((file, idx) => {
                             doc.addPage();
