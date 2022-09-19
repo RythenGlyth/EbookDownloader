@@ -10,6 +10,7 @@ const prompts  = require('prompts');
 const https = require('https')
 const crypto = require('crypto')
 var spawn = require('child_process').spawn
+var Iconv  = require('iconv').Iconv;
 
 var HTMLParser = require('node-html-parser');
 var parseString = require('xml2js').parseString;
@@ -29,11 +30,11 @@ prompts([
                 value: "cornelsen"
             },
             {
-                title: 'Klett - old',
+                title: 'Klett',
                 value: "klett"
             },
             {
-                title: 'Klett (Cornelsen) - old',
+                title: 'scook (Cornelsen) - old',
                 value: "scook"
             },
             {
@@ -834,17 +835,21 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                     }))
                 }
                 prompts([{
-                    type: (prev, values) => values.publisher == "cornelsen" ? null : 'autocomplete',
+                    type: 'autocomplete',
                     name: 'license',
                     message: "Book",
                     choices
                 }]).then(values => {
-
                     axios({
                         url: "https://bridge.klett.de/" + values.license.dienst_id + "/",
                         method: "get",
                         jar: cookieJar,
                         withCredentials: true,
+                        headers: {
+                            'user-agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.3325.181 Safari/537.36",
+                            'sec-ch-ua-platform': "Windows",
+                            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9'
+                        }
                     }).then(async (res) => {
                         //fs.writeFileSync("./sas", res.data);
                         //Promise.all(HTMLParser.parse(res.data).querySelector(".viewport").querySelector(".zoomable").querySelector(".pages").childNodes.map(pageNode => {
@@ -870,7 +875,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                             initial: true,
                         }])
 
-                        if(settingsJSON.buildYear == "2021") {
+                        if(parseInt(settingsJSON.buildYear) >= 2021) {
 
                             console.log("starting new downloader")
 
@@ -904,7 +909,6 @@ async function klett(email, passwd, deleteAllOldTempImages) {
 
                             console.log(`Downloaded 0/${titles.length}`)
                             for(let pi in titles) {
-                                //if(pi > 20) break;
                                 await new Promise((resolve, reject) => {
                                     axios({
                                         url: "https://bridge.klett.de/" + values.license.dienst_id + "/" + values2.quality.path.replace("${page}", pi),
@@ -939,8 +943,10 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                         method: "get",
                                         jar: cookieJar,
                                         withCredentials: true,
+                                        responseType: 'arraybuffer',
+                                        responseEncoding: 'binary'
                                     }).then(async (res) => {
-                                        resolve(res.data);
+                                        resolve(JSON.parse(new Iconv('UTF-8', 'ISO-8859-1').convert(res.data).toString("utf-8")));
                                     }).catch(err => {
                                         console.log(err);
                                         console.log("Error downloading pages text")
@@ -1003,7 +1009,6 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                             console.log(`Downloaded 0/${pagesNode.length}`)
                             var offset = 0;
                             for(var pi in pagesNode) {
-                                //if(pi > 10) break;
                                 var pageNode = pagesNode[pi];
                                 await new Promise((resolve, reject) => {
                                     if(pageNode.querySelector(".content")) {
@@ -1065,6 +1070,8 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                             size = [ 768, 1024 ];
                         }
 
+                        var selectableTextElements = [];
+
                         if(bothPrompts.selectableText) {
                             console.log(`Downloading selectable text positions (${0}/${Object.keys(selectableText).length})`);
                             var i = 0;
@@ -1085,16 +1092,16 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                     });
                                 });
                                 var parsedSVG = HTMLParser.parse(svg);
-                                selectableText[st] = selectableText[st].text.split(" ").map((text, idx) => {
+                                selectableText[st].text.split(" ").forEach((text, idx) => {
                                     var path = parsedSVG.querySelector("#p" + (parseInt(st) + 1) + "w" + (idx+1))?.getAttribute("d");
                                     var spltPaths = path?.split(/[zZ]/)?.filter(f=>f)?.map(f=>f.split(/(?=[a-zA-Z])/)?.map(s => [s[0], s.slice(1)?.split(" ")]));
 
-                                    var minX = undefined;
-                                    var maxX = undefined;
-                                    var minY = undefined;
-                                    var maxY = undefined;
 
-                                    if(spltPaths) for(var sp of spltPaths) {
+                                    var boxes = spltPaths?.map(sp => {
+                                        var minX = undefined;
+                                        var maxX = undefined;
+                                        var minY = undefined;
+                                        var maxY = undefined;
                                         var x = 0;
                                         var y = 0;
                                         if(sp) for(var s of sp) {
@@ -1127,15 +1134,23 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                             if(minY === undefined || y < minY) minY = y;
                                             if(maxY === undefined || y > maxY) maxY = y;
                                         }
-                                    }
-
-                                    return {
-                                        contents: text,
-                                        left: minX,
-                                        top: minY,
-                                        width: maxX - minX,
-                                        height: maxY - minY,
-                                    }
+                                        return {
+                                            left: minX,
+                                            top: minY,
+                                            width: maxX - minX,
+                                            height: maxY - minY,
+                                        }
+                                    });
+                                    
+                                    var summedWidth = boxes?.reduce((a, b) => a + b.width, 0);
+                                    var i = 0;
+                                    boxes?.forEach(b => {
+                                        var j = i + Math.round((b.width / summedWidth) * text.length)
+                                        b.contents = text.slice(i, j);
+                                        i = j;
+                                        if(!selectableTextElements[st]) selectableTextElements[st] = []
+                                        selectableTextElements[st].push(b)
+                                    })
                                 });
                                 console.log(`\x1b[1A\x1b[2K\x1b[1GDownloading selectable text positions (${i}/${Object.keys(selectableText).length})`);
                             }
@@ -1171,13 +1186,13 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                 valign: 'center'
                             });
                             if(bothPrompts.selectableText) {
-                                selectableText[/*parseInt(file.split("-")[0])*/ idx]?.forEach(line => {
+                                selectableTextElements[/*parseInt(file.split("-")[0])*/ idx]?.forEach(line => {
                                     if(line.width && line.height && line.left && line.top && line.contents && line.contents.length > 0) {
                                         doc.save();
                                         //doc.rect(line.left, line.top, line.width, line.height).fillOpacity(0.5).fill("#1e1e1e")
 
                                         doc.translate(line.left, line.top);
-                                        if(line.height > line.width && line.height / line.contents.length < line.width) {
+                                        if(line.height > line.width * 2 && line.height / line.contents.length < line.width) {
                                             doc.rotate(90).scale(line.height/doc.widthOfString(line.contents, {
                                                 lineBreak: false,
                                             }), line.width/doc.heightOfString(line.contents, { 
