@@ -946,7 +946,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                         responseType: 'arraybuffer',
                                         responseEncoding: 'binary'
                                     }).then(async (res) => {
-                                        resolve(JSON.parse(new Iconv('UTF-8', 'ISO-8859-1').convert(res.data).toString("utf-8")));
+                                        resolve(JSON.parse(new Iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE').convert(res.data).toString("utf-8")));
                                     }).catch(err => {
                                         console.log(err);
                                         console.log("Error downloading pages text")
@@ -1024,7 +1024,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                                     y: parseFloat(l = style["top"]) / (l.includes("%") ? 100 : 1),
                                                     width: parseFloat(l = style["width"]) / (l.includes("%") ? 100 : 1),
                                                     height: parseFloat(l = style["height"]) / (l.includes("%") ? 100 : 1),
-                                                    url: a.getAttribute("href"),
+                                                    url: a.getAttribute("href") ?? "",
                                                 }
                                             }))
                                         }
@@ -1033,7 +1033,8 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                             var searchable = pageNode.querySelector(".content").querySelector(".searchable");
                                             if(searchable && searchable.querySelector(".text") && searchable.querySelector("link")) {
                                                 selectableText[parseInt(pi) + offset] = {
-                                                    text: searchable.querySelector(".text").innerText,
+                                                    //text: new Iconv("utf-8", "utf-8//TRANSLIT//IGNORE").convert(searchable.querySelector(".text").innerText).toString("utf-8"),
+                                                    text: searchable.querySelector(".text").innerText.replace(/\uFFFF/g, 'i'),
                                                     wordPositionSvg: searchable.querySelector("link").getAttribute("href")
                                                 };
                                             }
@@ -1077,7 +1078,8 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                             var i = 0;
                             for(var st of Object.keys(selectableText)) {
                                 i++;
-                                var svg = await new Promise((resolve, reject) => {
+                                var m
+                                var svg = await new Promise(m = (resolve, reject) => {
                                     axios({
                                         url: "https://bridge.klett.de/" + values.license.dienst_id + "/" + selectableText[st].wordPositionSvg,
                                         method: "get",
@@ -1088,7 +1090,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                     }).catch(err => {
                                         console.log(err);
                                         console.log("Error selectable text positions");
-                                        resolve();
+                                        m(resolve, reject);
                                     });
                                 });
                                 var parsedSVG = HTMLParser.parse(svg);
@@ -1202,20 +1204,25 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                             }) / 2))
                                         } else {
                                             try {
-                                                doc.scale(line.width/doc.widthOfString(line.contents, {
+                                                if(doc.widthOfString(line.contents, {
                                                     lineBreak: false,
-                                                }), line.height/doc.heightOfString(line.contents, { 
+                                                }) > 0 && doc.heightOfString(line.contents, { 
                                                     lineBreak: false,
-                                                })).translate(0, (doc.heightOfString(line.contents, {
-                                                    lineBreak: false,
-                                                }) / 2));
+                                                }) > 0)
+                                                    doc.scale(line.width/doc.widthOfString(line.contents, {
+                                                        lineBreak: false,
+                                                    }), line.height/doc.heightOfString(line.contents, { 
+                                                        lineBreak: false,
+                                                    })).translate(0, (doc.heightOfString(line.contents, {
+                                                        lineBreak: false,
+                                                    }) / 2));
                                             } catch(err) {
                                                 console.log(err);
                                                 console.log(line.contents, line.left, line.top, line.width, line.height);
                                                 process.exit(1);
                                             }
                                         }
-                                        doc.fillOpacity(0)
+                                        //doc.fillOpacity(0)
                                         doc.text(line.contents, 0, 0, {
                                             lineGap: 0,
                                             paragraphGap: 0,
