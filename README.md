@@ -16,3 +16,4 @@ Downloads all the images from the pages of a purchased e-book and combines them 
 - Cornelsen (`scook.de`)
 - Klett (`klett.de`)
 - Westermann (`westermann.de`)
+- C.C.BUCHNER (`click-and-study.de`)
