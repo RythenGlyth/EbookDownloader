@@ -16,6 +16,8 @@ var HTMLParser = require('node-html-parser');
 var parseString = require('xml2js').parseString;
 const { stdin, stdout } = require('process');
 const { resolve } = require('path');
+const path = require('path');
+const { url } = require('inspector');
 
 axiosCookieJarSupport(axios);
 
@@ -40,6 +42,10 @@ prompts([
             {
                 title: 'Westermann',
                 value: "westermann"
+            },
+            {
+                title: 'C.C.BUCHNER - click & study',
+                value: "clicknstudy"
             }
         ]
     },
@@ -76,8 +82,89 @@ prompts([
         case "westermann":
             westermann(inputs.email, inputs.passwd, inputs.deleteAllOldTempImages)
             break;
+        case "clicknstudy":
+            clicknstudy(inputs.email, inputs.passwd, inputs.deleteAllOldTempImages)
+            break;
     }
 })
+function clicknstudy(email, passwd, deleteAllOldTempImages) {
+    const cookieJar = new tough.CookieJar();
+    const axiosInstance = axios.create({
+        jar: cookieJar,
+        withCredentials: true,
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.4103.116 Safari/537.36',
+        }
+    });
+    axiosInstance({
+        method: 'get',
+        url: "https://www.click-and-study.de/"
+    }).then(async (res) => {
+        axiosInstance({
+            method: 'post',
+            url: "https://www.ccbuchner.de/clickandstudy/login.html?redirect=https://www.click-and-study.de/Buecher",
+            data: qs.stringify({
+                wako_email: email,
+                wako_passwort: passwd,
+                ct_redirect: "https://www.click-and-study.de/Buecher",
+                ct_btn_anmelden: ""
+            })
+        }).then((res) => {
+            const root = HTMLParser.parse(res.data);
+            axiosInstance({
+                method: 'get',
+                url: root.querySelector("meta[http-equiv='refresh']").getAttribute("content").split(";")[1]
+            }).then(async (res) => {
+                const root = HTMLParser.parse(res.data);
+                //console.log(res.data)
+                const books = root.querySelectorAll(".bookItem").map(book => {
+                    return {
+                        title: book.querySelector(".bottom .title").text,
+                        link: new URL(book.querySelector("a").getAttribute("href"), "https://www.click-and-study.de/").href,
+                    }   
+                });
+                console.log(books);
+                var book = (await prompts([{
+                    type: "select",
+                    name: "book",
+                    message: "Select a book",
+                    choices: books.map(book => {
+                        return {
+                            title: book.title,
+                            value: book
+                        }
+                    })
+                }])).book
+                var selectableText = (await prompts([{
+                    type: "toggle",
+                    name: "selectableText",
+                    message: "Selectable text",
+                    initial: true,
+                }])).selectableText
+                axiosInstance({
+                    method: 'get',
+                    url: book.link
+                }).then(async (res) => {
+                    var bookData = expandToNearestJSONObject(res.data, res.data.indexOf("new PDFBookPublic({") + 19)
+                    
+                }).catch(err => {
+                    console.log(err)
+                    console.log("Error while getting book - 503")
+                })
+            }).catch((err) => {
+                console.log(err)
+                console.log("ccbuchner booklist loading failed - 502");
+            })
+        }).catch((err) => {
+            console.log(err);
+            console.log("ccbuchner Login failed - 501");
+        })
+    }).catch((err) => {
+        console.log(err);
+        console.log("ccbuchner Login failed - 500");
+    })
+
+}
 
 function westermann(email, passwd, deleteAllOldTempImages) {
     const cookieJar = new tough.CookieJar();
@@ -90,299 +177,311 @@ function westermann(email, passwd, deleteAllOldTempImages) {
         }
     });
     axiosInstance({
-        url: "https://bibox2.westermann.de/main.8db51796d61b8ce5.js",
-        method: "GET"
-    }).then(res => {
-        /**
-         * @type {{production: boolean, dataPrivacyUrl: string, backendUrl: string, backendLogin: boolean, frontendUrl: string, frontendUrlIOS: string, accountAdminUrl: string, changePasswordUrl: string, zsv: { live: boolean, url: string, }, sentry: { enabled: boolean, dsn: string, }, matomoUrl: string, matomoSiteId: number, maxUploadFileSize: {        forTeacher: number, forUser: number, }, pingTimer: number, oauth: { loginURL: string, logoutURL: string, postLogoutRedirect: string, redirectURL: string, clientID: string, protocol: string, }}}
-        }}
-         */
-        var mainjs = res.data;
-        var p = mainjs.match(/environmentName\w*:\w*/).index;
-        var p0 = p;
-        for(var braces = 0; braces != -1; p0--) {
-            if(mainjs[p0] == "}") braces++;
-            if(mainjs[p0] == "{") braces--;
-        }
-        var p1 = p;
-        for(var braces = 0; braces != -1; p1++) {
-            if(mainjs[p1] == "{") braces++;
-            if(mainjs[p1] == "}") braces--;
-        }
-
-        eval("var environment =" + mainjs.slice(p0+1,p1))
+        url: "https://bibox2.westermann.de/",
+        method: "get"
+    }).then(async (res) => {
+        const root = HTMLParser.parse(res.data);
         
-        var codeVerifier = randomString(50)
-        var codeChallenge = sha256hash.update(codeVerifier).digest('base64').replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-        var state = randomString(20);
-
         axiosInstance({
-            url: environment.oauth.loginURL + "?client_id=" + environment.oauth.clientID + "&response_type=code&scope=openid&redirect_uri=" + environment.oauth.redirectURL + "&state=" + state + "&code_challenge_method=S256&code_challenge=" + codeChallenge,
-            method: "GET",
+            url: new URL(root.querySelectorAll("script").filter(l => l.getAttribute("src")?.startsWith("main"))[0].getAttribute("src"), "https://bibox2.westermann.de/").href,
+            method: "GET"
         }).then(res => {
-            var parsedHTML = HTMLParser.parse(res.data);
-            var form = parsedHTML.querySelector("form");
+            /**
+             * @type {{production: boolean, dataPrivacyUrl: string, backendUrl: string, backendLogin: boolean, frontendUrl: string, frontendUrlIOS: string, accountAdminUrl: string, changePasswordUrl: string, zsv: { live: boolean, url: string, }, sentry: { enabled: boolean, dsn: string, }, matomoUrl: string, matomoSiteId: number, maxUploadFileSize: {        forTeacher: number, forUser: number, }, pingTimer: number, oauth: { loginURL: string, logoutURL: string, postLogoutRedirect: string, redirectURL: string, clientID: string, protocol: string, }}}
+            }}
+            */
+            var mainjs = res.data;
+            var p = mainjs.match(/environmentName\w*:\w*/).index;
+            var environment = expandToNearestJSONObject(mainjs, p)
+            /*var p0 = p;
+            for(var braces = 0; braces != -1; p0--) {
+                if(mainjs[p0] == "}") braces++;
+                if(mainjs[p0] == "{") braces--;
+            }
+            var p1 = p;
+            for(var braces = 0; braces != -1; p1++) {
+                if(mainjs[p1] == "{") braces++;
+                if(mainjs[p1] == "}") braces--;
+            }
+
+            eval("var environment =" + mainjs.slice(p0+1,p1))*/
+            
+            var codeVerifier = randomString(50)
+            var codeChallenge = sha256hash.update(codeVerifier).digest('base64').replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+            var state = randomString(20);
+
             axiosInstance({
-                url: "https://mein.westermann.de" + form.getAttribute("action"),
-                method: "post",
-                data: qs.stringify({
-                    "account": email,
-                    "password": passwd,
-                    "remember": 0,
-                    "action": "login",
-                }),
-                headers: {
-                    "Content-Type": "application/x-www-form-urlencoded",
-                },
+                url: environment.oauth.loginURL + "?client_id=" + environment.oauth.clientID + "&response_type=code&scope=openid&redirect_uri=" + environment.oauth.redirectURL + "&state=" + state + "&code_challenge_method=S256&code_challenge=" + codeChallenge,
+                method: "GET",
             }).then(res => {
-                var fwLoginUrl = new URL(res.data.match(/window.location = "(.*)";/)[1].replaceAll(/\\\//g, "\/"));
-                var code = fwLoginUrl.searchParams.get("code");
-                if(state == fwLoginUrl.searchParams.get("state")) {
-                    axiosInstance({
-                        url: fwLoginUrl.href,
-                        method: "GET",
-                    }).then(res => {
+                var parsedHTML = HTMLParser.parse(res.data);
+                var form = parsedHTML.querySelector("form");
+                axiosInstance({
+                    url: "https://mein.westermann.de" + form.getAttribute("action"),
+                    method: "post",
+                    data: qs.stringify({
+                        "account": email,
+                        "password": passwd,
+                        "remember": 0,
+                        "action": "login",
+                    }),
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                }).then(res => {
+                    var fwLoginUrl = new URL(res.data.match(/window.location = "(.*)";/)[1].replaceAll(/\\\//g, "\/"));
+                    var code = fwLoginUrl.searchParams.get("code");
+                    if(state == fwLoginUrl.searchParams.get("state")) {
                         axiosInstance({
-                            url: `${environment.backendUrl}/token`,
-                            method: "post",
-                            data: qs.stringify({
-                                code_verifier: codeVerifier,
-								redirect_uri: environment.oauth.redirectURL,
-								code
-                            }),
+                            url: fwLoginUrl.href,
+                            method: "GET",
                         }).then(res => {
-                            /** @type {{id_token: string, token_type: string, expires_in: number, access_token: string, refresh_token: string}} */
-                            var tokens = res.data;
-
-                            axiosInstance.defaults.headers.authorization = `${tokens.token_type} ${tokens.access_token}`
-
                             axiosInstance({
-                                url: `${environment.backendUrl}/api/user`,
-                                method: "get",
-                            }).then(async res => {
-                                /** @type {{abos: Object[], addonModuleLicenses: Object[], bookLicenses: {bookId: number, id: string, isbn: string, title: string, type: string}[], canChangeZSVPassword: boolean, groupId: number, id: number, params: Object, schools: Object[], type: string, username: string}} */
-                                var userData = res.data
+                                url: `${environment.backendUrl}/token`,
+                                method: "post",
+                                data: qs.stringify({
+                                    code_verifier: codeVerifier,
+                                    redirect_uri: environment.oauth.redirectURL,
+                                    code
+                                }),
+                            }).then(res => {
+                                /** @type {{id_token: string, token_type: string, expires_in: number, access_token: string, refresh_token: string}} */
+                                var tokens = res.data;
 
-                                var book = (await prompts([{
-                                    type: "select",
-                                    name: "book",
-                                    message: "Select a book",
-                                    choices: userData.bookLicenses.map(book => {
-                                        return {
-                                            title: book.title,
-                                            value: book
-                                        }
-                                    })
-                                }])).book
+                                axiosInstance.defaults.headers.authorization = `${tokens.token_type} ${tokens.access_token}`
 
-                                var bookID = book.bookId;
-
-                                    
                                 axiosInstance({
-                                    url: `${environment.backendUrl}/api/sync/${bookID}?materialtypes[]=default&materialtypes[]=addon`,
+                                    url: `${environment.backendUrl}/api/user`,
                                     method: "get",
                                 }).then(async res => {
+                                    /** @type {{abos: Object[], addonModuleLicenses: Object[], bookLicenses: {bookId: number, id: string, isbn: string, title: string, type: string}[], canChangeZSVPassword: boolean, groupId: number, id: number, params: Object, schools: Object[], type: string, username: string}} */
+                                    var userData = res.data
 
-                                    /** @typedef {{bookId: number, children: Chapter[], demo: boolean, filesize: Object, hasDemoMaterials: boolean, id: number, md5sum: Object, pagenumEnd: string, pagenumStart: string, removed: boolean, sortCode: number, title: string, type: string, version: number}} Chapter  */
-
-                                    /** @typedef {{bookId: number, categoryId: number, chapterIds: number[], demo: number, description: Object, file: string, filesize: number, filetype: string, grades: Object, id: number, keywords: string, md5sum: string, mimetype: string, pageIds: number[], pagesCount: Object, preview_filename: string, preview_filesize: number, preview_height: Object, preview_md5sum: string, preview_url: string, preview_width: Object, price: Object, publish_date: Object, removed: number, shop_url: Object, sortCode: number, subjects: Object, title: string, type: string, version: number, zipUrl: Object}} Material */
-
-                                    /** @typedef {{aemDorisID: Object, bookId: number, demo: boolean, id: number, images: {filesize: number, height: number, id: number, md5sum: string, pageId: number, removed: boolean, url: string, version: number, width: number}[], internalPagenum: number, name: string, removed: boolean, type: string, version: number}} Page */
-                                    
-                                    /** @type {{book: {addonmodules: Object[], chapterVersion: number, coverHash: string, coverUrl: string, demo: boolean, demoMaterials: boolean, description: string, hasZav: boolean, hidePageInput: boolean, id: number, isbn: string, lastModified: number, pageDataHash: string, pageDataSize: number, pagenum: number, publisher: string, region: string, removed: boolean, searchIndexHash: string, searchIndexSize: number, subtitle: string, title: string, version: number}[], categories: {addonModuleRelated: boolean, bookId: number, count: number, demo: number, downloadSize: number, guid: Object, id: number, removed: boolean, sortCode: number, title: string, version: number}[], chapters: Chapter[], materials: Material[], pages: Page[]}} */
-                                    var bookData = res.data;
-
-                                    var quality = (await prompts([{
+                                    var book = (await prompts([{
                                         type: "select",
-                                        name: "quality",
-                                        message: "Select the Quality",
-                                        choices: bookData.pages[0].images.map((img, idx) => {
+                                        name: "book",
+                                        message: "Select a book",
+                                        choices: userData.bookLicenses.map(book => {
                                             return {
-                                                title: img.width + "x" + img.height,
-                                                value: idx
+                                                title: book.title,
+                                                value: book
                                             }
                                         })
-                                    }])).quality
+                                    }])).book
 
-                                    var selectableText = (await prompts([{
-                                        type: "toggle",
-                                        name: "selectableText",
-                                        message: "Selectable text",
-                                        initial: true,
-                                    }])).selectableText
+                                    var bookID = book.bookId;
 
-                                    
-                                    var name = book.title.replace(/[^a-zA-Z0-9 \(\)_\-,\.]/gi, '') + "_" + `${bookData.pages[0].images[quality].width}x${bookData.pages[0].images[quality].height}`;
-                                    var folder = ("./DownloadTemp/" + name + "/");
-                                    if (deleteAllOldTempImages && fs.existsSync(folder)) fs.rmSync(folder, {
-                                        recursive: true,
-                                    });
-                                    console.log("Deleted Temp files");
-                                    fs.mkdirSync(folder, {
-                                        recursive: true
-                                    });
-                                    console.log("created Folder: " + folder)
+                                        
+                                    axiosInstance({
+                                        url: `${environment.backendUrl}/api/sync/${bookID}?materialtypes[]=default&materialtypes[]=addon`,
+                                        method: "get",
+                                    }).then(async res => {
 
-                                    
-                                    var pageData = selectableText && await new Promise((resolve, reject) => {
-                                        console.log(`Downloading selectable Text`)
-                                        axiosInstance({
-                                            url: `${environment.backendUrl}/api/books/${bookID}/pageData`,
-                                            method: "get",
-                                        }).then(res => {
-                                            axiosInstance({
-                                                url: res.data.tempUrl,
-                                                method: "get",
-                                            }).then(async res => {
-                                                resolve(res.data);
-                                            }).catch(err => {
-                                                console.log(err)
-                                                console.log(`Could not load book text - 409`)
-                                                reject()
+                                        /** @typedef {{bookId: number, children: Chapter[], demo: boolean, filesize: Object, hasDemoMaterials: boolean, id: number, md5sum: Object, pagenumEnd: string, pagenumStart: string, removed: boolean, sortCode: number, title: string, type: string, version: number}} Chapter  */
+
+                                        /** @typedef {{bookId: number, categoryId: number, chapterIds: number[], demo: number, description: Object, file: string, filesize: number, filetype: string, grades: Object, id: number, keywords: string, md5sum: string, mimetype: string, pageIds: number[], pagesCount: Object, preview_filename: string, preview_filesize: number, preview_height: Object, preview_md5sum: string, preview_url: string, preview_width: Object, price: Object, publish_date: Object, removed: number, shop_url: Object, sortCode: number, subjects: Object, title: string, type: string, version: number, zipUrl: Object}} Material */
+
+                                        /** @typedef {{aemDorisID: Object, bookId: number, demo: boolean, id: number, images: {filesize: number, height: number, id: number, md5sum: string, pageId: number, removed: boolean, url: string, version: number, width: number}[], internalPagenum: number, name: string, removed: boolean, type: string, version: number}} Page */
+                                        
+                                        /** @type {{book: {addonmodules: Object[], chapterVersion: number, coverHash: string, coverUrl: string, demo: boolean, demoMaterials: boolean, description: string, hasZav: boolean, hidePageInput: boolean, id: number, isbn: string, lastModified: number, pageDataHash: string, pageDataSize: number, pagenum: number, publisher: string, region: string, removed: boolean, searchIndexHash: string, searchIndexSize: number, subtitle: string, title: string, version: number}[], categories: {addonModuleRelated: boolean, bookId: number, count: number, demo: number, downloadSize: number, guid: Object, id: number, removed: boolean, sortCode: number, title: string, version: number}[], chapters: Chapter[], materials: Material[], pages: Page[]}} */
+                                        var bookData = res.data;
+
+                                        var quality = (await prompts([{
+                                            type: "select",
+                                            name: "quality",
+                                            message: "Select the Quality",
+                                            choices: bookData.pages[0].images.map((img, idx) => {
+                                                return {
+                                                    title: img.width + "x" + img.height,
+                                                    value: idx
+                                                }
                                             })
-                                        }).catch(err => {
-                                            console.log(err)
-                                            console.log(`Could not load book text - 408`)
-                                            reject()
-                                        })
-                                    })
-                                                
-                                    console.log(`Downloaded 0/${bookData.pages.length} pages`)
+                                        }])).quality
 
-                                    for(var pi = 0; pi < bookData.pages.length; pi++) {
-                                        var page = bookData.pages[pi];
-                                        var url = page.images[quality].url;
-                                        await new Promise((resolve, reject) => {
-                                            axios({
-                                                url: url,
+                                        var selectableText = (await prompts([{
+                                            type: "toggle",
+                                            name: "selectableText",
+                                            message: "Selectable text",
+                                            initial: true,
+                                        }])).selectableText
+
+                                        
+                                        var name = book.title.replace(/[^a-zA-Z0-9 \(\)_\-,\.]/gi, '') + "_" + `${bookData.pages[0].images[quality].width}x${bookData.pages[0].images[quality].height}`;
+                                        var folder = ("./DownloadTemp/" + name + "/");
+                                        if (deleteAllOldTempImages && fs.existsSync(folder)) fs.rmSync(folder, {
+                                            recursive: true,
+                                        });
+                                        console.log("Deleted Temp files");
+                                        fs.mkdirSync(folder, {
+                                            recursive: true
+                                        });
+                                        console.log("created Folder: " + folder)
+
+                                        
+                                        var pageData = selectableText && await new Promise((resolve, reject) => {
+                                            console.log(`Downloading selectable Text`)
+                                            axiosInstance({
+                                                url: `${environment.backendUrl}/api/books/${bookID}/pageData`,
                                                 method: "get",
-                                                responseType: 'stream',
-                                            }).then((res) => {
-                                                res.data.pipe(fs.createWriteStream(`${folder}${zeroPad(pi, 4)}-${page.id}-${page.name}.${url.split(".").slice(-1)[0]}`)).on('finish', () => {
-                                                    resolve();
+                                            }).then(res => {
+                                                axiosInstance({
+                                                    url: res.data.tempUrl,
+                                                    method: "get",
+                                                }).then(async res => {
+                                                    resolve(res.data);
+                                                }).catch(err => {
+                                                    console.log(err)
+                                                    console.log(`Could not load book text - 409`)
+                                                    reject()
                                                 })
                                             }).catch(err => {
-                                                console.log(err);
-                                                console.log("Error downloading page " + pi)
-                                                resolve();
+                                                console.log(err)
+                                                console.log(`Could not load book text - 408`)
+                                                reject()
                                             })
-                                        });
+                                        })
+                                                    
+                                        console.log(`Downloaded 0/${bookData.pages.length} pages`)
 
-                                        console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${pi+1}/${bookData.pages.length} pages`)
-                                    }
-
-                                    var size = [bookData.pages[0].images[0].width, bookData.pages[0].images[0].height];
-
-                                    console.log("Merging into PDF");
-
-                                    var doc = new PDFDoc({
-                                        margins: {
-                                            top: 0,
-                                            bottom: 0,
-                                            left: 0,
-                                            right: 0
-                                        },
-                                        autoFirstPage: false,
-                                        size,
-                                        bufferPages: true,
-                                    });
-                                    doc.pipe(fs.createWriteStream(name + ".pdf"))
-                                    doc.font('./unifont-15.0.01.ttf')
-                                    var dir = fs.readdirSync(folder);
-                                    dir.sort().forEach((file, idx) => {
-                                        doc.addPage();
-                                        doc.image(folder + file, {
-                                            fit: size,
-                                            align: 'center',
-                                            valign: 'center'
-                                        });
-                                        if(selectableText) {
-                                            var thePageData = pageData[file.split("-")?.[1]]
-                                            var txts = thePageData?.txt?.split("")
-                                            txts.forEach((char, idx) => {
-                                                if(thePageData.cds[idx]) {
-                                                    var [ left, top, width, height ] = thePageData.cds[idx].map((l, i, a) => [
-                                                        () => a[0] / 1e5,
-                                                        () => a[2] / 1e5,
-                                                        () => (a[1] / 1e5 - a[0] / 1e5) * ((txts[idx+1] ?? " ") == " " ? 2 : 1),
-                                                        () => a[3] / 1e5 - a[2] / 1e5,
-                                                    ][i]()).map((l, i) => Math.round(l * size[i % 2 == 0 ? 0 : 1]));
-
-                                                    if((txts[idx+1] ?? " ") == " ") char += " "
-
-                                                    doc.save();
-                                                    //doc.rect(left, top, width, height).fillOpacity(0.5).fill("#1e1e1e")
-
-                                                    doc.translate(left, top);
-
-                                                    if(doc.widthOfString(char, {
-                                                        lineBreak: false,
-                                                    }) > 0 && doc.heightOfString(char, {
-                                                        lineBreak: false,
-                                                    }) > 0) {
-                                                        doc.scale(width/doc.widthOfString(char, {
-                                                            lineBreak: false,
-                                                        }), height/doc.heightOfString(char, { 
-                                                            lineBreak: false,
-                                                        }))/*.translate(0, (doc.heightOfString(char, {
-                                                            lineBreak: false,
-                                                        }) / 2));*/
-    
-                                                        doc.fillOpacity(0)
-                                                        doc.text(char, 0, 0, {
-                                                            lineGap: 0,
-                                                            paragraphGap: 0,
-                                                            lineBreak: false,
-                                                            baseline: 'top',
-                                                            align: 'left',
-                                                        });
-                                                    }
-
-                                                    doc.restore();
-                                                }
+                                        for(var pi = 0; pi < bookData.pages.length; pi++) {
+                                            var page = bookData.pages[pi];
+                                            var url = page.images[quality].url;
+                                            await new Promise((resolve, reject) => {
+                                                axios({
+                                                    url: url,
+                                                    method: "get",
+                                                    responseType: 'stream',
+                                                }).then((res) => {
+                                                    res.data.pipe(fs.createWriteStream(`${folder}${zeroPad(pi, 4)}-${page.id}-${page.name}.${url.split(".").slice(-1)[0]}`)).on('finish', () => {
+                                                        resolve();
+                                                    })
+                                                }).catch(err => {
+                                                    console.log(err);
+                                                    console.log("Error downloading page " + pi)
+                                                    resolve();
+                                                })
                                             });
 
-
+                                            console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${pi+1}/${bookData.pages.length} pages`)
                                         }
-                                        console.log(`\x1b[1A\x1b[2K\x1b[1GMerging into PDF (${idx}/${dir.length})`);
-                                    });
-                                    doc.end();
-                                    console.log("Wrote " + name + ".pdf")
+
+                                        var size = [bookData.pages[0].images[0].width, bookData.pages[0].images[0].height];
+
+                                        console.log("Merging into PDF");
+
+                                        var doc = new PDFDoc({
+                                            margins: {
+                                                top: 0,
+                                                bottom: 0,
+                                                left: 0,
+                                                right: 0
+                                            },
+                                            autoFirstPage: false,
+                                            size,
+                                            bufferPages: true,
+                                        });
+                                        doc.pipe(fs.createWriteStream(name + ".pdf"))
+                                        doc.font('./unifont-15.0.01.ttf')
+                                        var dir = fs.readdirSync(folder);
+                                        dir.sort().forEach((file, idx) => {
+                                            doc.addPage();
+                                            doc.image(folder + file, {
+                                                fit: size,
+                                                align: 'center',
+                                                valign: 'center'
+                                            });
+                                            if(selectableText) {
+                                                var thePageData = pageData[file.split("-")?.[1]]
+                                                var txts = thePageData?.txt?.split("")
+                                                txts.forEach((char, idx) => {
+                                                    if(thePageData.cds[idx]) {
+                                                        var [ left, top, width, height ] = thePageData.cds[idx].map((l, i, a) => [
+                                                            () => a[0] / 1e5,
+                                                            () => a[2] / 1e5,
+                                                            () => (a[1] / 1e5 - a[0] / 1e5) * ((txts[idx+1] ?? " ") == " " ? 2 : 1),
+                                                            () => a[3] / 1e5 - a[2] / 1e5,
+                                                        ][i]()).map((l, i) => Math.round(l * size[i % 2 == 0 ? 0 : 1]));
+
+                                                        if((txts[idx+1] ?? " ") == " ") char += " "
+
+                                                        doc.save();
+                                                        //doc.rect(left, top, width, height).fillOpacity(0.5).fill("#1e1e1e")
+
+                                                        doc.translate(left, top);
+
+                                                        if(doc.widthOfString(char, {
+                                                            lineBreak: false,
+                                                        }) > 0 && doc.heightOfString(char, {
+                                                            lineBreak: false,
+                                                        }) > 0) {
+                                                            doc.scale(width/doc.widthOfString(char, {
+                                                                lineBreak: false,
+                                                            }), height/doc.heightOfString(char, { 
+                                                                lineBreak: false,
+                                                            }))/*.translate(0, (doc.heightOfString(char, {
+                                                                lineBreak: false,
+                                                            }) / 2));*/
+        
+                                                            doc.fillOpacity(0)
+                                                            doc.text(char, 0, 0, {
+                                                                lineGap: 0,
+                                                                paragraphGap: 0,
+                                                                lineBreak: false,
+                                                                baseline: 'top',
+                                                                align: 'left',
+                                                            });
+                                                        }
+
+                                                        doc.restore();
+                                                    }
+                                                });
+
+
+                                            }
+                                            console.log(`\x1b[1A\x1b[2K\x1b[1GMerging into PDF (${idx}/${dir.length})`);
+                                        });
+                                        doc.end();
+                                        console.log("Wrote " + name + ".pdf")
 
 
 
+                                    }).catch(err => {
+                                        console.log(err)
+                                        console.log(`Could not load book - 407`)
+                                    })
                                 }).catch(err => {
                                     console.log(err)
-                                    console.log(`Could not load book - 407`)
+                                    console.log(`Could not load books - 406`)
                                 })
                             }).catch(err => {
                                 console.log(err)
-                                console.log(`Could not load books - 406`)
+                                console.log(`Could not tokens - 405`)
                             })
                         }).catch(err => {
                             console.log(err)
-                            console.log(`Could not tokens - 405`)
+                            console.log(`Could not login - 404`)
                         })
-                    }).catch(err => {
-                        console.log(err)
-                        console.log(`Could not login - 404`)
-                    })
-                } else {
-                    console.log(`Could not login - 403`)
-                }
+                    } else {
+                        console.log(`Could not login - 403`)
+                    }
+                }).catch(err => {
+                    console.log(err)
+                    console.log(`Could not login - 402`)
+                })
             }).catch(err => {
                 console.log(err)
-                console.log(`Could not login - 402`)
+                console.log(`Could not login - 401`)
             })
+
+
         }).catch(err => {
             console.log(err)
-            console.log(`Could not login - 401`)
+            console.log(`Could not login - 400`)
         })
 
-
-    }).catch(err => {
+    }).catch((err) => {
         console.log(err)
-        console.log(`Could not login - 400`)
+        console.log(`Could not login - 399`)
     })
 }
 
@@ -942,11 +1041,10 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                         url: "https://bridge.klett.de/" + values.license.dienst_id + "/data.json",
                                         method: "get",
                                         jar: cookieJar,
-                                        withCredentials: true,
-                                        responseType: 'arraybuffer',
-                                        responseEncoding: 'binary'
+                                        withCredentials: true
                                     }).then(async (res) => {
-                                        resolve(JSON.parse(new Iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE').convert(res.data).toString("utf-8")));
+                                        //resolve(JSON.parse(new Iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE').convert(res.data).toString("utf-8")));
+                                        resolve(res.data)
                                     }).catch(err => {
                                         console.log(err);
                                         console.log("Error downloading pages text")
@@ -958,7 +1056,10 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                             if(bothPrompts.hyperlinks) {
                                 dataJson.pages.forEach((page, idx) => {
                                     if(page.layers?.[0]?.areas?.length) {
-                                        hyperlinks[idx] = page.layers?.[0]?.areas;
+                                        hyperlinks[idx] = page.layers?.[0]?.areas.map(a => {
+                                            a.url = a.url ?? ""
+                                            return a;
+                                        });
                                     }
                                 });
                             }
@@ -967,7 +1068,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                     var page = dataJson.pages[i];
                                     if(page.content && page.content.text && page.content.wordPositionSvg) {
                                         selectableText[i] = {
-                                            text: page.content.text,
+                                            text: new Iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE').convert(page.content.text).toString("utf-8"),
                                             wordPositionSvg: page.content.wordPositionSvg
                                         };
                                     }
@@ -1222,7 +1323,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                                 process.exit(1);
                                             }
                                         }
-                                        //doc.fillOpacity(0)
+                                        doc.fillOpacity(0)
                                         doc.text(line.contents, 0, 0, {
                                             lineGap: 0,
                                             paragraphGap: 0,
@@ -1498,4 +1599,20 @@ function parseSortMipMap(mipMap) {
 
 function zeroPad(num, places) {
     return String(num).padStart(places, '0');
+}
+
+function expandToNearestJSONObject(input, pos) {
+    var p0 = pos;
+    for(var braces = 0; braces != -1; p0--) {
+        if(input[p0] == "}") braces++;
+        if(input[p0] == "{") braces--;
+    }
+    var p1 = pos;
+    for(var braces = 0; braces != -1; p1++) {
+        if(input[p1] == "{") braces++;
+        if(input[p1] == "}") braces--;
+    }
+
+    eval("var out =" + input.slice(p0+1,p1))
+    return out
 }
