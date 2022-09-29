@@ -4,13 +4,14 @@ const qs = require('querystring');
 const axiosCookieJarSupport = require('axios-cookiejar-support').default;
 const tough = require('tough-cookie');
 const fs = require('fs');
-const PDFDoc =require('pdfkit');
+const PDFDoc = require('pdfkit');
 const util = require('util')
-const prompts  = require('prompts');
+const prompts = require('prompts');
 const https = require('https')
 const crypto = require('crypto')
 var spawn = require('child_process').spawn
-var Iconv  = require('iconv').Iconv;
+var Iconv = require('iconv').Iconv;
+const sizeOf = require('image-size')
 
 var HTMLParser = require('node-html-parser');
 var parseString = require('xml2js').parseString;
@@ -18,6 +19,15 @@ const { stdin, stdout } = require('process');
 const { resolve } = require('path');
 const path = require('path');
 const { url } = require('inspector');
+const transformationMatrix = require('transformation-matrix')
+
+function decomposeTSR(tsr) {
+    return transformationMatrix.decomposeTSR(toAffineMatrix(tsr))
+}
+
+function toAffineMatrix(tsr) {
+    return tsr.reduce((a, c, i) => (a[String.fromCharCode(97 + i)] = c, a), {})
+}
 
 axiosCookieJarSupport(axios);
 
@@ -110,6 +120,7 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
                 ct_btn_anmelden: ""
             })
         }).then((res) => {
+            const getUrl = (path) => new URL(path, "https://www.click-and-study.de/").href
             const root = HTMLParser.parse(res.data);
             axiosInstance({
                 method: 'get',
@@ -119,11 +130,10 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
                 //console.log(res.data)
                 const books = root.querySelectorAll(".bookItem").map(book => {
                     return {
-                        title: book.querySelector(".bottom .title").text,
-                        link: new URL(book.querySelector("a").getAttribute("href"), "https://www.click-and-study.de/").href,
-                    }   
+                        title: book.querySelector(".title").text,
+                        link: getUrl(book.querySelector("a").getAttribute("href")),
+                    }
                 });
-                console.log(books);
                 var book = (await prompts([{
                     type: "select",
                     name: "book",
@@ -145,23 +155,192 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
                     method: 'get',
                     url: book.link
                 }).then(async (res) => {
+                    /**
+                     * @type {{
+                     * ajaxUrl: string,
+                     * ajaxBookmarkUrl: string,
+                     * ajaxSaveSpot: string, 
+                     * apiToken: string, 
+                     * apiMediaUrl: string, 
+                     * buyUrl: string, 
+                     * bookId: string, 
+                     * bookName: string, 
+                     * pageOffset: number, 
+                     * pageOffsetLabels: object<string, number>, 
+                     * startPage: number, 
+                     * endPage: number, 
+                     * onePageOnly: boolean, 
+                     * imgDir: string, 
+                     * tier: string, 
+                     * containerAId: string, 
+                     * containerBId: string
+                     * }}
+                     */
                     var bookData = expandToNearestJSONObject(res.data, res.data.indexOf("new PDFBookPublic({") + 19)
-                    
+
+                    var pageOffsetLabelsRev = Object.entries(bookData.pageOffsetLabels).reduce((result, value) => ({ ...result, [value[1]]: value[0] }), {});
+
+                    var name = bookData.bookName.replace(/[^a-za-z0-9 \(\)_\-,\.]/gi, '');
+                    var folder = ("./DownloadTemp/" + name + "/");
+                    if (deleteAllOldTempImages && fs.existsSync(folder)) fs.rmSync(folder, {
+                        recursive: true,
+                    });
+                    console.log("deleted temp files");
+                    fs.mkdirSync(folder, {
+                        recursive: true
+                    });
+                    console.log("created folder: " + folder)
+
+                    var pagesData = []
+
+                    console.log(`downloaded 0/${bookData.endPage} pages`)
+                    for (var i = 0; i <= bookData.endPage - bookData.startPage; i++) {
+                        if (i > 10) break;
+
+                        var pageLabel = i + bookData.startPage - bookData.pageOffset;
+
+                        if (pageLabel <= 0) {
+                            pageLabel = pageOffsetLabelsRev[i + bookData.startPage];
+                        }
+
+                        var url = getUrl(bookData.imgDir + bookData.bookId + "/" + (i + bookData.startPage));
+                        await new Promise((resolve, reject) => {
+                            axiosInstance({
+                                method: 'get',
+                                url: url,
+                                responseType: 'stream'
+                            }).then(res => {
+                                ffmpegProcess = spawn("ffmpeg", ["-f", "jpeg_pipe", "-i", "-", "-f", "image2", "-"]);
+                                ffmpegProcess.stdout.pipe(fs.createWriteStream(`${folder}${zeroPad(i, 4)}-${pageLabel}.jpg`));
+                                res.data.pipe(ffmpegProcess.stdin).on('finish', () => {
+                                    axiosInstance({
+                                        method: 'post',
+                                        url: getUrl(bookData.ajaxUrl),
+                                        data: qs.stringify({
+                                            op: "loadPage",
+                                            page: i + bookData.startPage,
+                                            id: bookData.bookId,
+                                        })
+                                    }).then((res) => {
+                                        pagesData[i] = res.data;
+                                        resolve()
+                                    }).catch(err => {
+                                        console.error(err)
+                                        console.log("error while loading page " + i + " -e505")
+                                        reject()
+                                    })
+                                })
+                            }).catch(err => {
+                                console.log(err)
+                                console.log("error while downloading pages - e504")
+                                reject()
+                            })
+                        });
+
+
+                        console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${i}/${bookData.endPage} pages`)
+
+                    }
+
+                    console.log("downloaded all pages")
+
+                    var size = [pagesData[0].width, pagesData[0].height]
+
+                    var doc = new PDFDoc({
+                        size,
+                        margins: {
+                            top: 0,
+                            bottom: 0,
+                            left: 0,
+                            right: 0
+                        },
+                        autoFirstPage: false,
+                        bufferPages: true
+                    });
+                    doc.pipe(fs.createWriteStream(name + ".pdf"));
+                    doc.font('./unifont-15.0.01.ttf')
+                    var dir = fs.readdirSync(folder);
+                    dir.sort().forEach((file, idx) => {
+                        doc.addPage();
+                        doc.rect(0, 0, size[0], size[1]).fill("#000000");
+                        var thissize = sizeOf(folder + file);
+                        var thissizefitted = {
+                            width: Math.min(size[0] / thissize.width, size[1] / thissize.height) * thissize.width,
+                            height: Math.min(size[0] / thissize.width, size[1] / thissize.height) * thissize.height
+                        }
+                        console.log(size, thissizefitted)
+                        doc.image(folder + file, {
+                            fit: size,
+                            align: 'center',
+                            valign: 'center'
+                        })
+                        if (selectableText) {
+                            var pd = JSON.parse(pagesData[idx].data)
+                            var outerTransform = toAffineMatrix(pd.viewport.transform)
+                            var outerTransformTr = transformationMatrix.decomposeTSR(outerTransform)
+                            doc.save()
+                            doc.translate((size[0] - thissizefitted.width) / 2, (size[1] - thissizefitted.height) / 2)
+                            doc.translate(pd.viewport.viewBox[0], pd.viewport.viewBox[1])
+
+                            doc.scale((thissizefitted.width - pd.viewport.viewBox[0]) / pd.viewport.viewBox[2], (thissizefitted.height - pd.viewport.viewBox[1]) / pd.viewport.viewBox[3])
+                            doc.transform(...pd.viewport.transform)
+                            pd.textObjects.forEach(text => {
+                                var transform = toAffineMatrix(text.transform)
+                                var transformTr = transformationMatrix.decomposeTSR(transform)
+                                transform.a /= transformTr.scale.sx
+                                transform.b /= transformTr.scale.sx
+                                transform.c /= transformTr.scale.sy
+                                transform.d /= transformTr.scale.sy
+                                doc.save()
+                                doc.transform(...Object.values(transform))
+                                doc.scale(1, -1)
+                                
+                                if (text.str
+                                    && doc.widthOfString(text.str, { lineBreak: false }) > 0
+                                    && doc.heightOfString(text.str, { lineBreak: false }) > 0) {
+                                    doc.scale(text.width / doc.widthOfString(text.str, {
+                                        lineBreak: false
+                                    }), text.height / doc.heightOfString(text.str, {
+                                        lineBreak: false
+                                    }))
+
+                                    //doc.scale(1/19, 1/19)
+
+
+
+                                    doc.text(text.str, 0, 0, {
+                                        lineGap: 0,
+                                        paragraphGap: 0,
+                                        lineBreak: false,
+                                        baseline: 'bottom',
+                                        align: 'left',
+                                    })
+                                }
+                                doc.restore()
+                            })
+                            doc.restore()
+                        }
+                    })
+
+                    doc.end()
+                    console.log("Wrote " + name + ".pdf")
+
+
                 }).catch(err => {
                     console.log(err)
-                    console.log("Error while getting book - 503")
+                    console.log("Error while getting book - e503")
                 })
             }).catch((err) => {
                 console.log(err)
-                console.log("ccbuchner booklist loading failed - 502");
+                console.log("ccbuchner booklist loading failed - e502");
             })
         }).catch((err) => {
             console.log(err);
-            console.log("ccbuchner Login failed - 501");
+            console.log("ccbuchner Login failed - e501");
         })
     }).catch((err) => {
         console.log(err);
-        console.log("ccbuchner Login failed - 500");
+        console.log("ccbuchner Login failed - e500");
     })
 
 }
@@ -181,7 +360,7 @@ function westermann(email, passwd, deleteAllOldTempImages) {
         method: "get"
     }).then(async (res) => {
         const root = HTMLParser.parse(res.data);
-        
+
         axiosInstance({
             url: new URL(root.querySelectorAll("script").filter(l => l.getAttribute("src")?.startsWith("main"))[0].getAttribute("src"), "https://bibox2.westermann.de/").href,
             method: "GET"
@@ -205,7 +384,7 @@ function westermann(email, passwd, deleteAllOldTempImages) {
             }
 
             eval("var environment =" + mainjs.slice(p0+1,p1))*/
-            
+
             var codeVerifier = randomString(50)
             var codeChallenge = sha256hash.update(codeVerifier).digest('base64').replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
             var state = randomString(20);
@@ -231,7 +410,7 @@ function westermann(email, passwd, deleteAllOldTempImages) {
                 }).then(res => {
                     var fwLoginUrl = new URL(res.data.match(/window.location = "(.*)";/)[1].replaceAll(/\\\//g, "\/"));
                     var code = fwLoginUrl.searchParams.get("code");
-                    if(state == fwLoginUrl.searchParams.get("state")) {
+                    if (state == fwLoginUrl.searchParams.get("state")) {
                         axiosInstance({
                             url: fwLoginUrl.href,
                             method: "GET",
@@ -271,7 +450,7 @@ function westermann(email, passwd, deleteAllOldTempImages) {
 
                                     var bookID = book.bookId;
 
-                                        
+
                                     axiosInstance({
                                         url: `${environment.backendUrl}/api/sync/${bookID}?materialtypes[]=default&materialtypes[]=addon`,
                                         method: "get",
@@ -282,7 +461,7 @@ function westermann(email, passwd, deleteAllOldTempImages) {
                                         /** @typedef {{bookId: number, categoryId: number, chapterIds: number[], demo: number, description: Object, file: string, filesize: number, filetype: string, grades: Object, id: number, keywords: string, md5sum: string, mimetype: string, pageIds: number[], pagesCount: Object, preview_filename: string, preview_filesize: number, preview_height: Object, preview_md5sum: string, preview_url: string, preview_width: Object, price: Object, publish_date: Object, removed: number, shop_url: Object, sortCode: number, subjects: Object, title: string, type: string, version: number, zipUrl: Object}} Material */
 
                                         /** @typedef {{aemDorisID: Object, bookId: number, demo: boolean, id: number, images: {filesize: number, height: number, id: number, md5sum: string, pageId: number, removed: boolean, url: string, version: number, width: number}[], internalPagenum: number, name: string, removed: boolean, type: string, version: number}} Page */
-                                        
+
                                         /** @type {{book: {addonmodules: Object[], chapterVersion: number, coverHash: string, coverUrl: string, demo: boolean, demoMaterials: boolean, description: string, hasZav: boolean, hidePageInput: boolean, id: number, isbn: string, lastModified: number, pageDataHash: string, pageDataSize: number, pagenum: number, publisher: string, region: string, removed: boolean, searchIndexHash: string, searchIndexSize: number, subtitle: string, title: string, version: number}[], categories: {addonModuleRelated: boolean, bookId: number, count: number, demo: number, downloadSize: number, guid: Object, id: number, removed: boolean, sortCode: number, title: string, version: number}[], chapters: Chapter[], materials: Material[], pages: Page[]}} */
                                         var bookData = res.data;
 
@@ -305,7 +484,7 @@ function westermann(email, passwd, deleteAllOldTempImages) {
                                             initial: true,
                                         }])).selectableText
 
-                                        
+
                                         var name = book.title.replace(/[^a-zA-Z0-9 \(\)_\-,\.]/gi, '') + "_" + `${bookData.pages[0].images[quality].width}x${bookData.pages[0].images[quality].height}`;
                                         var folder = ("./DownloadTemp/" + name + "/");
                                         if (deleteAllOldTempImages && fs.existsSync(folder)) fs.rmSync(folder, {
@@ -317,7 +496,7 @@ function westermann(email, passwd, deleteAllOldTempImages) {
                                         });
                                         console.log("created Folder: " + folder)
 
-                                        
+
                                         var pageData = selectableText && await new Promise((resolve, reject) => {
                                             console.log(`Downloading selectable Text`)
                                             axiosInstance({
@@ -340,10 +519,10 @@ function westermann(email, passwd, deleteAllOldTempImages) {
                                                 reject()
                                             })
                                         })
-                                                    
+
                                         console.log(`Downloaded 0/${bookData.pages.length} pages`)
 
-                                        for(var pi = 0; pi < bookData.pages.length; pi++) {
+                                        for (var pi = 0; pi < bookData.pages.length; pi++) {
                                             var page = bookData.pages[pi];
                                             var url = page.images[quality].url;
                                             await new Promise((resolve, reject) => {
@@ -362,7 +541,7 @@ function westermann(email, passwd, deleteAllOldTempImages) {
                                                 })
                                             });
 
-                                            console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${pi+1}/${bookData.pages.length} pages`)
+                                            console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${pi + 1}/${bookData.pages.length} pages`)
                                         }
 
                                         var size = [bookData.pages[0].images[0].width, bookData.pages[0].images[0].height];
@@ -390,38 +569,38 @@ function westermann(email, passwd, deleteAllOldTempImages) {
                                                 align: 'center',
                                                 valign: 'center'
                                             });
-                                            if(selectableText) {
+                                            if (selectableText) {
                                                 var thePageData = pageData[file.split("-")?.[1]]
                                                 var txts = thePageData?.txt?.split("")
                                                 txts.forEach((char, idx) => {
-                                                    if(thePageData.cds[idx]) {
-                                                        var [ left, top, width, height ] = thePageData.cds[idx].map((l, i, a) => [
+                                                    if (thePageData.cds[idx]) {
+                                                        var [left, top, width, height] = thePageData.cds[idx].map((l, i, a) => [
                                                             () => a[0] / 1e5,
                                                             () => a[2] / 1e5,
-                                                            () => (a[1] / 1e5 - a[0] / 1e5) * ((txts[idx+1] ?? " ") == " " ? 2 : 1),
+                                                            () => (a[1] / 1e5 - a[0] / 1e5) * ((txts[idx + 1] ?? " ") == " " ? 2 : 1),
                                                             () => a[3] / 1e5 - a[2] / 1e5,
                                                         ][i]()).map((l, i) => Math.round(l * size[i % 2 == 0 ? 0 : 1]));
 
-                                                        if((txts[idx+1] ?? " ") == " ") char += " "
+                                                        if ((txts[idx + 1] ?? " ") == " ") char += " "
 
                                                         doc.save();
                                                         //doc.rect(left, top, width, height).fillOpacity(0.5).fill("#1e1e1e")
 
                                                         doc.translate(left, top);
 
-                                                        if(doc.widthOfString(char, {
+                                                        if (doc.widthOfString(char, {
                                                             lineBreak: false,
                                                         }) > 0 && doc.heightOfString(char, {
                                                             lineBreak: false,
                                                         }) > 0) {
-                                                            doc.scale(width/doc.widthOfString(char, {
+                                                            doc.scale(width / doc.widthOfString(char, {
                                                                 lineBreak: false,
-                                                            }), height/doc.heightOfString(char, { 
+                                                            }), height / doc.heightOfString(char, {
                                                                 lineBreak: false,
                                                             }))/*.translate(0, (doc.heightOfString(char, {
                                                                 lineBreak: false,
                                                             }) / 2));*/
-        
+
                                                             doc.fillOpacity(0)
                                                             doc.text(char, 0, 0, {
                                                                 lineGap: 0,
@@ -643,17 +822,17 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                                                                     value: q
                                                                 }
                                                             })
-                                                        },{
+                                                        }, {
                                                             type: "text",
                                                             name: "extension",
                                                             message: "Image File Extension",
                                                             initial: "jpg",
-                                                        },{
+                                                        }, {
                                                             type: "text",
                                                             name: "magickquality",
                                                             message: "Image Magick Quality in % (100% - 100% of size, 95% - 40% of size, 90% - 25% of size, 85% - 15% of size)",
                                                             initial: "90",
-                                                        },{
+                                                        }, {
                                                             type: "toggle",
                                                             name: "selectableText",
                                                             message: "Selectable Text",
@@ -675,36 +854,36 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                                                                             headers: {
                                                                                 "x-pspdfkit-image-token": pspdfkitauthdata.imageToken,
                                                                                 "Accept": "image/webp,*//*",
-                                                                                "Referer": "https://ebook.cornelsen.de/",
-                                                                            },
-                                                                            responseType: 'stream',
-                                                                            timeout: 60000,
-                                                                            httpsAgent: new https.Agent({ keepAlive: true }),
-                                                                        }).then(res => {
-                                                                            //fs.createWriteStream(`${tmpFolder}${zeroPad(p.pageIndex, 4)}-${p.pageLabel}.webp`).write(res.data);
-                                                                            res.data.pipe(fs.createWriteStream(`${tmpFolder}${zeroPad(p.pageIndex, 4)}-${p.pageLabel}.webp`))
-                                                                            resolve();
-                                                                        }).catch(err => {
-                                                                            console.log(`Could not load page ${p.pageIndex} - 760`)
-                                                                            console.log(err)
-                                                                            reject();
-                                                                        })
-                                                                    })
-                                                                })).then(() => {
-                                                                    console.log(`Downloaded all Pages`)
-                                                                }).catch(err => {
-                                                                    console.log(`Could not load all pages - 761`)
-                                                                    console.log(err)
-                                                                })*/
+                "Referer": "https://ebook.cornelsen.de/",
+            },
+            responseType: 'stream',
+            timeout: 60000,
+            httpsAgent: new https.Agent({ keepAlive: true }),
+        }).then(res => {
+            //fs.createWriteStream(`${tmpFolder}${zeroPad(p.pageIndex, 4)}-${p.pageLabel}.webp`).write(res.data);
+            res.data.pipe(fs.createWriteStream(`${tmpFolder}${zeroPad(p.pageIndex, 4)}-${p.pageLabel}.webp`))
+            resolve();
+        }).catch(err => {
+            console.log(`Could not load page ${p.pageIndex} - 760`)
+            console.log(err)
+            reject();
+        })
+    })
+})).then(() => {
+    console.log(`Downloaded all Pages`)
+}).catch(err => {
+    console.log(`Could not load all pages - 761`)
+    console.log(err)
+})*/
 
                                                                 var pagesText = {};
 
                                                                 var errored = false;
                                                                 console.log(`Downloaded 0/${pagesData.pages.length}`)
                                                                 var pi = 0;
-                                                                for(p of pagesData.pages) {
+                                                                for (p of pagesData.pages) {
                                                                     pi++;
-                                                                    if(errored) {
+                                                                    if (errored) {
                                                                         break;
                                                                     }
                                                                     await new Promise((resolve, reject) => {
@@ -721,10 +900,10 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                                                                             var imageFile = `${tmpFolder}${zeroPad(p.pageIndex, 4)}-${p.pageLabel}.jpg`;
                                                                             magickProcess = spawn("magick", ["-", "-quality", `${values2.magickquality}%`, `${values2.extension}:-`]);
                                                                             ffmpegProcess = spawn("ffmpeg", ["-f", "jpeg_pipe", "-i", "-", "-f", "image2", "-"]);
-                                                                            
+
                                                                             ffmpegProcess.stdout.pipe(fs.createWriteStream(imageFile)).on('finish', (s) => {
 
-                                                                                if(values2.selectableText) {
+                                                                                if (values2.selectableText) {
                                                                                     axiosInstance({
                                                                                         method: 'get',
                                                                                         url: `https://uma20-pspdfkit.prod.aws.cornelsen.de/i/d/${bookData.ebookIsbnSbNum}/h/${pspdfkitauthdata.layerHandle}/page-${p.pageIndex}-text`,
@@ -763,7 +942,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                                                                     })
                                                                     console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${pi}/${pagesData.pages.length} pages`)
                                                                 }
-                                                                if(errored) {
+                                                                if (errored) {
                                                                     console.log(`Could not load all pages - 761`)
                                                                 } else {
                                                                     console.log(`Downloaded all Pages, now creating PDF Document`)
@@ -787,31 +966,31 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                                                                             align: 'center',
                                                                             valign: 'center'
                                                                         });
-                                                                        if(values2.selectableText) {
+                                                                        if (values2.selectableText) {
                                                                             pagesText[/*idx*/ parseInt(file.split("-")[0])].forEach(line => {
-                                                                                if(line.contents.length > 0) {
+                                                                                if (line.contents.length > 0) {
                                                                                     doc.save();
                                                                                     //doc.rect(line.left, line.top, line.width, line.height).fillOpacity(0.5).fill("#1e1e1e")
 
                                                                                     doc.translate(line.left, line.top);
-                                                                                    if(line.height > line.width && line.height / line.contents.length < line.width) {
-                                                                                        doc.rotate(90).scale(line.height/doc.widthOfString(line.contents, {
+                                                                                    if (line.height > line.width && line.height / line.contents.length < line.width) {
+                                                                                        doc.rotate(90).scale(line.height / doc.widthOfString(line.contents, {
                                                                                             lineBreak: false,
-                                                                                        }), line.width/doc.heightOfString(line.contents, { 
+                                                                                        }), line.width / doc.heightOfString(line.contents, {
                                                                                             lineBreak: false,
-                                                                                        }) ).translate(0, -(doc.heightOfString(line.contents, { 
+                                                                                        })).translate(0, -(doc.heightOfString(line.contents, {
                                                                                             lineBreak: false,
                                                                                         }) / 2))
                                                                                     } else {
                                                                                         try {
-                                                                                            doc.scale(line.width/doc.widthOfString(line.contents, {
+                                                                                            doc.scale(line.width / doc.widthOfString(line.contents, {
                                                                                                 lineBreak: false,
-                                                                                            }), line.height/doc.heightOfString(line.contents, { 
+                                                                                            }), line.height / doc.heightOfString(line.contents, {
                                                                                                 lineBreak: false,
                                                                                             })).translate(0, (doc.heightOfString(line.contents, {
                                                                                                 lineBreak: false,
                                                                                             }) / 2));
-                                                                                        } catch(err) {
+                                                                                        } catch (err) {
                                                                                             console.log(err);
                                                                                             console.log(line.contents, line.left, line.top, line.width, line.height);
                                                                                             process.exit(1);
@@ -916,7 +1095,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                 withCredentials: true,
             }).then(async res => {
                 var choices = [];
-                for(let l of res.data?.items) {
+                for (let l of res.data?.items) {
                     choices.push(await new Promise((resolve, rej) => {
                         axios({
                             url: l?.["_links"]?.["produkt"]?.["href"],
@@ -925,7 +1104,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                         }).then(res => {
                             resolve({
                                 title: res.data?.titel + " - " + res.data?.untertitel,
-                                value: {dienst_id: l.dienst_id, title: res.data?.titel + " - " + res.data?.untertitel}
+                                value: { dienst_id: l.dienst_id, title: res.data?.titel + " - " + res.data?.untertitel }
                             })
                         }).catch(err => {
                             console.log(err);
@@ -974,7 +1153,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                             initial: true,
                         }])
 
-                        if(parseInt(settingsJSON.buildYear) >= 2021) {
+                        if (parseInt(settingsJSON.buildYear) >= 2021) {
 
                             console.log("starting new downloader")
 
@@ -1007,7 +1186,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                             var imgExtension = values2.quality.path.split(".").slice(-1);
 
                             console.log(`Downloaded 0/${titles.length}`)
-                            for(let pi in titles) {
+                            for (let pi in titles) {
                                 await new Promise((resolve, reject) => {
                                     axios({
                                         url: "https://bridge.klett.de/" + values.license.dienst_id + "/" + values2.quality.path.replace("${page}", pi),
@@ -1018,7 +1197,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                         withCredentials: true,
                                     }).then((res) => {
                                         res.data.pipe(fs.createWriteStream(folder + zeroPad(pi, 4) + "-" + titles[pi] + "." + imgExtension)).on('finish', () => {
-                                            console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${parseInt(pi)+1}/${titles.length} pages`)
+                                            console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${parseInt(pi) + 1}/${titles.length} pages`)
                                             resolve();
                                         })
                                     }).catch(err => {
@@ -1027,13 +1206,13 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                         resolve();
                                     })
                                 });
-                                    
+
                             }
                             console.log("Downloaded all images");
 
                             var dataJson;
 
-                            if(bothPrompts.selectableText || bothPrompts.hyperlinks) {
+                            if (bothPrompts.selectableText || bothPrompts.hyperlinks) {
                                 console.log("Downloading pages text");
 
                                 dataJson = await new Promise((resolve, reject) => {
@@ -1053,9 +1232,9 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                 });
                             }
 
-                            if(bothPrompts.hyperlinks) {
+                            if (bothPrompts.hyperlinks) {
                                 dataJson.pages.forEach((page, idx) => {
-                                    if(page.layers?.[0]?.areas?.length) {
+                                    if (page.layers?.[0]?.areas?.length) {
                                         hyperlinks[idx] = page.layers?.[0]?.areas.map(a => {
                                             a.url = a.url ?? ""
                                             return a;
@@ -1063,10 +1242,10 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                     }
                                 });
                             }
-                            if(bothPrompts.selectableText) {
-                                for(var i = 0; i < dataJson.pages.length; i++) {
+                            if (bothPrompts.selectableText) {
+                                for (var i = 0; i < dataJson.pages.length; i++) {
                                     var page = dataJson.pages[i];
-                                    if(page.content && page.content.text && page.content.wordPositionSvg) {
+                                    if (page.content && page.content.text && page.content.wordPositionSvg) {
                                         selectableText[i] = {
                                             text: new Iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE').convert(page.content.text).toString("utf-8"),
                                             wordPositionSvg: page.content.wordPositionSvg
@@ -1075,7 +1254,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                 }
                             }
 
-                            size = [ values2.quality.width / values2.quality.scale, values2.quality.height / values2.quality.scale ];
+                            size = [values2.quality.width / values2.quality.scale, values2.quality.height / values2.quality.scale];
 
                             //console.log(values2)
 
@@ -1086,14 +1265,14 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                 type: 'select',
                                 name: 'quality',
                                 message: "quality",
-                                choices: [4,2,1].map(q => {
+                                choices: [4, 2, 1].map(q => {
                                     return {
                                         title: `${768 * q} x ${1024 * q} (Scale ${q})`,
                                         value: q
                                     }
                                 })
                             }])
-                            
+
                             var name = values.license.title.replace(/[^a-zA-Z0-9 \(\)_\-,\.]/gi, '') + "_" + `${768 * values2.quality}x${1024 * values2.quality}`;
                             var folder = ("./DownloadTemp/" + name + "/");
                             if (deleteAllOldTempImages && fs.existsSync(folder)) fs.rmSync(folder, {
@@ -1109,14 +1288,14 @@ async function klett(email, passwd, deleteAllOldTempImages) {
 
                             console.log(`Downloaded 0/${pagesNode.length}`)
                             var offset = 0;
-                            for(var pi in pagesNode) {
+                            for (var pi in pagesNode) {
                                 var pageNode = pagesNode[pi];
                                 await new Promise((resolve, reject) => {
-                                    if(pageNode.querySelector(".content")) {
+                                    if (pageNode.querySelector(".content")) {
 
-                                        if(bothPrompts.hyperlinks) {
+                                        if (bothPrompts.hyperlinks) {
                                             var hyperlinksLayer = pageNode.querySelector(".content").querySelector(".annotation-layers")?.querySelector(".Sprungmarke");
-                                            
+
                                             hyperlinksLayer && (hyperlinks[parseInt(pi) + offset] = hyperlinksLayer.querySelectorAll("a")?.map(a => {
                                                 var style = Object.fromEntries(a.getAttribute("style").split(";").map(s => s.trim().split(":").map(si => si.trim())));
                                                 //console.log(style)
@@ -1130,9 +1309,9 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                             }))
                                         }
 
-                                        if(bothPrompts.selectableText) {
+                                        if (bothPrompts.selectableText) {
                                             var searchable = pageNode.querySelector(".content").querySelector(".searchable");
-                                            if(searchable && searchable.querySelector(".text") && searchable.querySelector("link")) {
+                                            if (searchable && searchable.querySelector(".text") && searchable.querySelector("link")) {
                                                 selectableText[parseInt(pi) + offset] = {
                                                     //text: new Iconv("utf-8", "utf-8//TRANSLIT//IGNORE").convert(searchable.querySelector(".text").innerText).toString("utf-8"),
                                                     text: searchable.querySelector(".text").innerText.replace(/\uFFFF/g, 'i'),
@@ -1154,7 +1333,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                         }).then((res) => {
                                             var extension = img.split(".").slice(-1);
                                             res.data.pipe(fs.createWriteStream(folder + zeroPad(pageNode.getAttribute("data-pos"), 4) + "-" + pageNode.getAttribute("data-title") + "." + extension)).on('finish', () => {
-                                                console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${parseInt(pi)+1}/${pagesNode.length} pages`)
+                                                console.log(`\x1b[1A\x1b[2K\x1b[1GDownloaded ${parseInt(pi) + 1}/${pagesNode.length} pages`)
                                                 resolve();
                                             })
                                         }).catch(err => {
@@ -1169,15 +1348,15 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                             }
                             console.log("Downloaded all images");
 
-                            size = [ 768, 1024 ];
+                            size = [768, 1024];
                         }
 
                         var selectableTextElements = [];
 
-                        if(bothPrompts.selectableText) {
+                        if (bothPrompts.selectableText) {
                             console.log(`Downloading selectable text positions (${0}/${Object.keys(selectableText).length})`);
                             var i = 0;
-                            for(var st of Object.keys(selectableText)) {
+                            for (var st of Object.keys(selectableText)) {
                                 i++;
                                 var m
                                 var svg = await new Promise(m = (resolve, reject) => {
@@ -1196,8 +1375,8 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                 });
                                 var parsedSVG = HTMLParser.parse(svg);
                                 selectableText[st].text.split(" ").forEach((text, idx) => {
-                                    var path = parsedSVG.querySelector("#p" + (parseInt(st) + 1) + "w" + (idx+1))?.getAttribute("d");
-                                    var spltPaths = path?.split(/[zZ]/)?.filter(f=>f)?.map(f=>f.split(/(?=[a-zA-Z])/)?.map(s => [s[0], s.slice(1)?.split(" ")]));
+                                    var path = parsedSVG.querySelector("#p" + (parseInt(st) + 1) + "w" + (idx + 1))?.getAttribute("d");
+                                    var spltPaths = path?.split(/[zZ]/)?.filter(f => f)?.map(f => f.split(/(?=[a-zA-Z])/)?.map(s => [s[0], s.slice(1)?.split(" ")]));
 
 
                                     var boxes = spltPaths?.map(sp => {
@@ -1207,8 +1386,8 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                         var maxY = undefined;
                                         var x = 0;
                                         var y = 0;
-                                        if(sp) for(var s of sp) {
-                                            switch(s[0]) {
+                                        if (sp) for (var s of sp) {
+                                            switch (s[0]) {
                                                 case "M":
                                                 case "L":
                                                     x = parseFloat(s[1][0]);
@@ -1232,10 +1411,10 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                                     y += parseFloat(s[1][0]);
                                                     break;
                                             }
-                                            if(minX === undefined || x < minX) minX = x;
-                                            if(maxX === undefined || x > maxX) maxX = x;
-                                            if(minY === undefined || y < minY) minY = y;
-                                            if(maxY === undefined || y > maxY) maxY = y;
+                                            if (minX === undefined || x < minX) minX = x;
+                                            if (maxX === undefined || x > maxX) maxX = x;
+                                            if (minY === undefined || y < minY) minY = y;
+                                            if (maxY === undefined || y > maxY) maxY = y;
                                         }
                                         return {
                                             left: minX,
@@ -1244,14 +1423,14 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                             height: maxY - minY,
                                         }
                                     });
-                                    
+
                                     var summedWidth = boxes?.reduce((a, b) => a + b.width, 0);
                                     var i = 0;
                                     boxes?.forEach(b => {
                                         var j = i + Math.round((b.width / summedWidth) * text.length)
                                         b.contents = text.slice(i, j);
                                         i = j;
-                                        if(!selectableTextElements[st]) selectableTextElements[st] = []
+                                        if (!selectableTextElements[st]) selectableTextElements[st] = []
                                         selectableTextElements[st].push(b)
                                     })
                                 });
@@ -1288,36 +1467,36 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                 align: 'center',
                                 valign: 'center'
                             });
-                            if(bothPrompts.selectableText) {
+                            if (bothPrompts.selectableText) {
                                 selectableTextElements[/*parseInt(file.split("-")[0])*/ idx]?.forEach(line => {
-                                    if(line.width && line.height && line.left && line.top && line.contents && line.contents.length > 0) {
+                                    if (line.width && line.height && line.left && line.top && line.contents && line.contents.length > 0) {
                                         doc.save();
                                         //doc.rect(line.left, line.top, line.width, line.height).fillOpacity(0.5).fill("#1e1e1e")
 
                                         doc.translate(line.left, line.top);
-                                        if(line.height > line.width * 2 && line.height / line.contents.length < line.width) {
-                                            doc.rotate(90).scale(line.height/doc.widthOfString(line.contents, {
+                                        if (line.height > line.width * 2 && line.height / line.contents.length < line.width) {
+                                            doc.rotate(90).scale(line.height / doc.widthOfString(line.contents, {
                                                 lineBreak: false,
-                                            }), line.width/doc.heightOfString(line.contents, { 
+                                            }), line.width / doc.heightOfString(line.contents, {
                                                 lineBreak: false,
-                                            }) ).translate(0, -(doc.heightOfString(line.contents, { 
+                                            })).translate(0, -(doc.heightOfString(line.contents, {
                                                 lineBreak: false,
                                             }) / 2))
                                         } else {
                                             try {
-                                                if(doc.widthOfString(line.contents, {
+                                                if (doc.widthOfString(line.contents, {
                                                     lineBreak: false,
-                                                }) > 0 && doc.heightOfString(line.contents, { 
+                                                }) > 0 && doc.heightOfString(line.contents, {
                                                     lineBreak: false,
                                                 }) > 0)
-                                                    doc.scale(line.width/doc.widthOfString(line.contents, {
+                                                    doc.scale(line.width / doc.widthOfString(line.contents, {
                                                         lineBreak: false,
-                                                    }), line.height/doc.heightOfString(line.contents, { 
+                                                    }), line.height / doc.heightOfString(line.contents, {
                                                         lineBreak: false,
                                                     })).translate(0, (doc.heightOfString(line.contents, {
                                                         lineBreak: false,
                                                     }) / 2));
-                                            } catch(err) {
+                                            } catch (err) {
                                                 console.log(err);
                                                 console.log(line.contents, line.left, line.top, line.width, line.height);
                                                 process.exit(1);
@@ -1339,21 +1518,21 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                             }
                             console.log(`\x1b[1A\x1b[2K\x1b[1GMerging into PDF (${idx}/${dir.length})`);
                         });
-                        if(bothPrompts.hyperlinks) {
+                        if (bothPrompts.hyperlinks) {
                             console.log("Adding Hyperlinks")
                             dir.sort().forEach((file, idx) => {
                                 doc.switchToPage(idx);
-                                    hyperlinks[idx]?.forEach(area => {
-                                        var x = area.x * size[0];
-                                        var y = area.y * size[1];
-                                        var w = area.width * size[0];
-                                        var h = area.height * size[1];
-                                        if(area.url.startsWith("?page=") && (toPage = parseInt(area.url.split("=")[1]) -1) && toPage < doc.bufferedPageRange().start + doc.bufferedPageRange().count) {
-                                            doc.link(x, y, w, h, toPage);
-                                        } else {
-                                            doc.link(x, y, w, h, area.url);
-                                        }
-                                    });
+                                hyperlinks[idx]?.forEach(area => {
+                                    var x = area.x * size[0];
+                                    var y = area.y * size[1];
+                                    var w = area.width * size[0];
+                                    var h = area.height * size[1];
+                                    if (area.url.startsWith("?page=") && (toPage = parseInt(area.url.split("=")[1]) - 1) && toPage < doc.bufferedPageRange().start + doc.bufferedPageRange().count) {
+                                        doc.link(x, y, w, h, toPage);
+                                    } else {
+                                        doc.link(x, y, w, h, area.url);
+                                    }
+                                });
                                 console.log(`\x1b[1A\x1b[2K\x1b[1GAdding Hyperlinks (${idx}/${dir.length})`);
                             });
                         }
@@ -1434,7 +1613,7 @@ async function scook(email, passwd, deleteAllOldTempImages) {
             withCredentials: true,
         }).then(async (res) => {
             var bookData = res.data;
-            if(bookData.id) {
+            if (bookData.id) {
                 console.log("Got Book Data");
                 var folder = ("./DownloadTemp/" + bookData.reiheTitel + "/" + bookData.bandTitel + "/").replace(/[^a-zA-Z0-9/ .]/gi, '');
                 if (deleteAllOldTempImages && fs.existsSync(folder)) fs.rmSync(folder, {
@@ -1466,7 +1645,7 @@ async function scook(email, passwd, deleteAllOldTempImages) {
                             withCredentials: true,
                         }).then((res) => {
                             parseString(res.data, async (err, bookDa) => {
-                                if(err) {
+                                if (err) {
                                     console.log("Could not get Book data");
                                     //console.log(err);
                                 } else {
@@ -1487,7 +1666,7 @@ async function scook(email, passwd, deleteAllOldTempImages) {
                                                     withCredentials: true,
                                                 }).then((res) => {
                                                     parseString(res.data, (err, pageData) => {
-                                                        if(err) {
+                                                        if (err) {
                                                             console.log("Could not get Page data (" + thisI + ")");
                                                             //console.log(err);
                                                         } else {
@@ -1507,12 +1686,12 @@ async function scook(email, passwd, deleteAllOldTempImages) {
                                                                     }).then((res) => {
                                                                         var hrefPointArray = firstHref.split(".");
                                                                         var extension = hrefPointArray[hrefPointArray.length - 1];
-                                                                        fs.writeFileSync(folder + zeroPad(2*thisI, 4) + "." + extension, Buffer.from(res.data, 'binary'))
-                                                                        console.log("Wrote " + folder + zeroPad(2*thisI, 4) + "." + extension)
+                                                                        fs.writeFileSync(folder + zeroPad(2 * thisI, 4) + "." + extension, Buffer.from(res.data, 'binary'))
+                                                                        console.log("Wrote " + folder + zeroPad(2 * thisI, 4) + "." + extension)
                                                                         resol();
                                                                     }).catch((err) => {
-                                                                        console.log("Could not get Image for page " + 2*thisI);
-                                                                        rej("Could not get Image for page " + 2*thisI);
+                                                                        console.log("Could not get Image for page " + 2 * thisI);
+                                                                        rej("Could not get Image for page " + 2 * thisI);
                                                                     });
                                                                 }),
                                                                 new Promise((resol, rej) => {
@@ -1525,12 +1704,12 @@ async function scook(email, passwd, deleteAllOldTempImages) {
                                                                     }).then((res) => {
                                                                         var hrefPointArray = secondHref.split(".");
                                                                         var extension = hrefPointArray[hrefPointArray.length - 1];
-                                                                        fs.writeFileSync(folder + zeroPad(2*thisI+1, 4) + "." + extension, Buffer.from(res.data, 'binary'))
-                                                                        console.log("Wrote " + folder + zeroPad(2*thisI+1, 4) + "." + extension)
+                                                                        fs.writeFileSync(folder + zeroPad(2 * thisI + 1, 4) + "." + extension, Buffer.from(res.data, 'binary'))
+                                                                        console.log("Wrote " + folder + zeroPad(2 * thisI + 1, 4) + "." + extension)
                                                                         resol();
                                                                     }).catch((err) => {
-                                                                        console.log("Could not get Image for page " + (2*thisI + 1));
-                                                                        rej("Could not get Image for page " + (2*thisI + 1))
+                                                                        console.log("Could not get Image for page " + (2 * thisI + 1));
+                                                                        rej("Could not get Image for page " + (2 * thisI + 1))
                                                                     });
                                                                 }),
                                                             ]).then(() => {
@@ -1603,16 +1782,16 @@ function zeroPad(num, places) {
 
 function expandToNearestJSONObject(input, pos) {
     var p0 = pos;
-    for(var braces = 0; braces != -1; p0--) {
-        if(input[p0] == "}") braces++;
-        if(input[p0] == "{") braces--;
+    for (var braces = 0; braces != -1; p0--) {
+        if (input[p0] == "}") braces++;
+        if (input[p0] == "{") braces--;
     }
     var p1 = pos;
-    for(var braces = 0; braces != -1; p1++) {
-        if(input[p1] == "{") braces++;
-        if(input[p1] == "}") braces--;
+    for (var braces = 0; braces != -1; p1++) {
+        if (input[p1] == "{") braces++;
+        if (input[p1] == "}") braces--;
     }
 
-    eval("var out =" + input.slice(p0+1,p1))
+    eval("var out =" + input.slice(p0 + 1, p1))
     return out
 }
