@@ -304,10 +304,7 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
                                         lineBreak: false
                                     }))
 
-                                    //doc.scale(1/19, 1/19)
-
-
-
+                                    doc.opacity(0)
                                     doc.text(text.str, 0, 0, {
                                         lineGap: 0,
                                         paragraphGap: 0,
