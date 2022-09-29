@@ -195,7 +195,6 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
 
                     console.log(`downloaded 0/${bookData.endPage} pages`)
                     for (var i = 0; i <= bookData.endPage - bookData.startPage; i++) {
-                        if (i > 10) break;
 
                         var pageLabel = i + bookData.startPage - bookData.pageOffset;
 
