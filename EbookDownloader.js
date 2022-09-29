@@ -267,7 +267,6 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
                             width: Math.min(size[0] / thissize.width, size[1] / thissize.height) * thissize.width,
                             height: Math.min(size[0] / thissize.width, size[1] / thissize.height) * thissize.height
                         }
-                        console.log(size, thissizefitted)
                         doc.image(folder + file, {
                             fit: size,
                             align: 'center',
