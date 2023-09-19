@@ -763,6 +763,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                                             })
                                         }).then(res => {
                                             var id_token = res.data.id_token;
+
                                             console.log("Got access token: " + id_token)
 
                                             //console.log(cookieJar.toJSON().cookies.find(c => c.key == "cornelsen-jwt").value);
@@ -847,7 +848,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                                                                         },
                                                                         headers: {
                                                                             "pspdfkit-platform": "web",
-                                                                            "pspdfkit-version": "protocol=5, client=2023.3.1, client-git=132691d67f",
+                                                                            "pspdfkit-version": "protocol=5, client=2023.4.0, client-git=80c992b150",
                                                                             "referer": "https://ebook.cornelsen.de/",
                                                                             "origin": "https://ebook.cornelsen.de",
                                                                         }
@@ -859,7 +860,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                                                                             url: `https://pspdfkit.prod.cornelsen.de/i/d/${bookData.ebookIsbnSbNum}/h/${pspdfkitauthdata.layerHandle}/document.json`,
                                                                             headers: {
                                                                                 "pspdfkit-platform": "web",
-                                                                                "pspdfkit-version": "protocol=5, client=2023.3.1, client-git=132691d67f",
+                                                                                "pspdfkit-version": "protocol=5, client=2023.4.0, client-git=80c992b150",
                                                                                 "X-PSPDFKit-Token": pspdfkitauthdata.token,
                                                                             }
                                                                         }).then(res => {
