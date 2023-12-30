@@ -1055,7 +1055,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                                                                                                                 } catch (err) {
                                                                                                                     console.log(err);
                                                                                                                     console.log(line.contents, line.left, line.top, line.width, line.height);
-                                                                                                                    process.exit(1);
+                                                                                                                    //process.exit(1);
                                                                                                                 }
                                                                                                             }
                                                                                                             doc.fillOpacity(0)
@@ -1585,7 +1585,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                                             } catch (err) {
                                                 console.log(err);
                                                 console.log(line.contents, line.left, line.top, line.width, line.height);
-                                                process.exit(1);
+                                                //process.exit(1);
                                             }
                                         }
                                         doc.fillOpacity(0)
