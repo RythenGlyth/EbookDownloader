@@ -722,7 +722,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages) {
                             }).then(res => {
                                 axiosInstance({
                                     method: 'get',
-                                    url: `https://mein.cornelsen.de/609.${res.data.match(/609\s*:\s*"(\w*)"\s*,/)[1]}.js`
+                                    url: `https://mein.cornelsen.de/537.${res.data.match(/537\s*:\s*"(\w*)"\s*,/)[1]}.js`
                                 }).then(res => {
                                     var clientId = res.data.match(/authority\s*:\s*"https:\/\/id.cornelsen.de\/"\s*,\s*clientId\s*:\s*"(.*?)"/m)[1];
                                     console.log("Got client id: " + clientId)
