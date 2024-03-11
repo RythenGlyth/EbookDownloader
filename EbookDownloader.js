@@ -12,6 +12,7 @@ const crypto = require('crypto')
 var spawn = require('child_process').spawn
 var Iconv = require('iconv').Iconv;
 const sizeOf = require('image-size')
+const pdflib = require("pdf-lib")
 
 var HTMLParser = require('node-html-parser');
 var parseString = require('xml2js').parseString;
@@ -22,6 +23,7 @@ const { url } = require('inspector');
 const transformationMatrix = require('transformation-matrix')
 
 const AdmZip  = require('adm-zip')
+const consumers = require('node:stream/consumers')
 
 function decomposeTSR(tsr) {
     return transformationMatrix.decomposeTSR(toAffineMatrix(tsr))
@@ -876,7 +878,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                                                             })
 
                                                                         console.log("Found " + ebooks.length + " ebooks: ", ebooks)
-                                                                        console.log("Decrypting PDFs")
+                                                                        console.log("Decrypting PDFs and adding metadata")
 
                                                                         let cipherargs = Buffer.from("YWVzLTEyOC1jYmN8R" + `CtEeEpTRn0yQjtrLTtDfQ==`, 'base64').toString("ascii").split("|")
                                                                         cipherargs = cipherargs.concat(cipherargs[1].split("").reverse().join(""))
@@ -884,16 +886,58 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                                                         for(let ebook of ebooks) {
                                                                             let cipher = crypto.createDecipheriv(...cipherargs)
                                                                             let input = fs.createReadStream(ebook.encryptedPath)
-                                                                            let output = fs.createWriteStream(ebook.fileName)
-                                                                            await new Promise((resolve, reject) => {
-                                                                                input.pipe(cipher).pipe(output).on("finish", resolve).on("error", reject)
+                                                                            new Promise((resolve, reject) => {
+                                                                                input.pipe(cipher).on("error", reject)
                                                                             }).catch(err => {
                                                                                 console.log("Error decrypting PDF")
                                                                                 console.log(err)
                                                                             })
+                                                                            let output = await consumers.buffer(cipher)
                                                                             console.log("Decrypted " + ebook.fileName)
+
+                                                                            let doc = await pdflib.PDFDocument.load(output)
+
+                                                                            let pageRefs = []
+                                                                            doc.catalog.Pages().traverse((node, ref) => node instanceof pdflib.PDFPageLeaf && pageRefs.push(ref))
+
+                                                                            function addOutlineChapter(chapter, root=false) {
+                                                                                let ref = doc.context.nextRef()
+                                                                                let map = new Map()
+                                                                                if(root) {
+                                                                                    map.set(pdflib.PDFName.Type, pdflib.PDFString.of("Outlines"))
+                                                                                } else {
+                                                                                    map.set(pdflib.PDFName.Title, pdflib.PDFString.of(chapter.headline))
+                                                                                }
+                                                                                if(chapter.pages && chapter.pages.length > 0) {
+                                                                                    let arr = pdflib.PDFArray.withContext(doc.context)
+                                                                                    arr.push(pageRefs[chapter.pages[0]["pageNo"]])
+                                                                                    arr.push(pdflib.PDFName.of("FitH"))
+                                                                                    arr.push(pdflib.PDFNumber.of(0))
+                                                                                    map.set(pdflib.PDFName.of("Dest"), arr)
+                                                                                    //TODO: section -> assets
+                                                                                }
+                                                                                if(chapter.chapters && chapter.chapters.length > 0) {
+                                                                                    let chaptersDicts = chapter.chapters.map((c) => addOutlineChapter(c))
+                                                                                    chaptersDicts.forEach((chapterDict, idx) => {
+                                                                                        if(idx > 0) chapterDict.set(pdflib.PDFName.of("Prev"), doc.context.getObjectRef(chaptersDicts[idx - 1]))
+                                                                                        if(idx < chaptersDicts.length - 1) chapterDict.set(pdflib.PDFName.of("Next"), doc.context.getObjectRef(chaptersDicts[idx + 1]))
+                                                                                        chapterDict.set(pdflib.PDFName.of("Parent"), ref)
+                                                                                    })
+                                                                                    map.set(pdflib.PDFName.of("First"), doc.context.getObjectRef(chaptersDicts[0]))
+                                                                                    map.set(pdflib.PDFName.of("Last"), doc.context.getObjectRef(chaptersDicts[chaptersDicts.length - 1]))
+                                                                                    map.set(pdflib.PDFName.of("Count"), pdflib.PDFNumber.of(chaptersDicts.length))
+                                                                                }
+                                                                                let dict = pdflib.PDFDict.fromMapWithContext(map, doc.context)
+                                                                                doc.context.assign(ref, dict)
+                                                                                return dict
+                                                                            }
+
+                                                                            let outline = addOutlineChapter(uma.location, true)
+                                                                            doc.catalog.set(pdflib.PDFName.of("Outlines"), doc.context.getObjectRef(outline))
+
+                                                                            fs.writeFileSync(ebook.fileName, await doc.save())
                                                                         }
-                                                                        console.log("Decrypted all PDFs")
+                                                                        console.log("finished PDFs")
                                                                     }).catch(err => {
                                                                         console.log("Could not get zip - 7n1")
                                                                         console.log(err)
