@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "adm-zip": "^0.5.10",
     "axios": "^0.21.4",
     "axios-cookiejar-support": "^1.0.1",
     "iconv": "^3.0.1",

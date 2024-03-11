@@ -1,6 +1,6 @@
 # EbookDownloader
 
-Downloads all the images from the pages of a purchased e-book and combines them into one PDF.
+Downloads all the images from the pages of a purchased e-book and combines them into one PDF. For Cornelsen it supports real digital PDF files which are not just images.
 
 ## Running
 
