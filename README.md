@@ -17,3 +17,6 @@ Downloads all the images from the pages of a purchased e-book and combines them 
 - Klett (`klett.de`)
 - Westermann (`westermann.de`)
 - C.C.BUCHNER (`click-and-study.de`)
+
+### Disclaimer
+This project is for educational purposes only. The project is not responsible for any misuse of the software.
