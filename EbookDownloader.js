@@ -897,8 +897,10 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
 
                                                                             let doc = await pdflib.PDFDocument.load(output)
 
-                                                                            let pageRefs = []
-                                                                            doc.catalog.Pages().traverse((node, ref) => node instanceof pdflib.PDFPageLeaf && pageRefs.push(ref))
+                                                                            //let pageRefs = []
+                                                                            //doc.catalog.Pages().traverse((node, ref) => node instanceof pdflib.PDFPageLeaf && pageRefs.push(ref))
+                                                                            let pagesAnnotations = {}
+                                                                            let pageMapping = {}
 
                                                                             function addOutlineChapter(chapter, root=false) {
                                                                                 let ref = doc.context.nextRef()
@@ -910,11 +912,40 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                                                                 }
                                                                                 if(chapter.pages && chapter.pages.length > 0) {
                                                                                     let arr = pdflib.PDFArray.withContext(doc.context)
-                                                                                    arr.push(pageRefs[chapter.pages[0]["pageNo"]])
-                                                                                    arr.push(pdflib.PDFName.of("FitH"))
-                                                                                    arr.push(pdflib.PDFNumber.of(0))
+                                                                                    arr.push(doc.getPage(chapter.pages[0]["pageNo"]).ref)
+                                                                                    arr.push(pdflib.PDFName.of("XYZ"))
+                                                                                    arr.push(pdflib.PDFNull)
+                                                                                    arr.push(pdflib.PDFNull)
+                                                                                    arr.push(pdflib.PDFNull)
                                                                                     map.set(pdflib.PDFName.of("Dest"), arr)
-                                                                                    //TODO: section -> assets
+
+
+                                                                                    for(let page of chapter.pages) {
+                                                                                        pageMapping[page.name] = page["pageNo"]
+                                                                                        if(page.sections && page.sections.length > 0) {
+                                                                                            let origin = doc.getPage(page["pageNo"])
+                                                                                            //let refs = []
+                                                                                            if(!pagesAnnotations[page["pageNo"]]) pagesAnnotations[page["pageNo"]] = []
+                                                                                            for(let section of page.sections) {
+                                                                                                if(!section.assets || section.assets.length == 0) continue
+                                                                                                for(let asset of section.assets) {
+                                                                                                    let realasset = uma.assets.find(a => a.id == asset.id)
+                                                                                                    if(realasset.type == "PAGE" && realasset.link || realasset.type == "ASSET_REFERENCE") pagesAnnotations[page["pageNo"]].push(
+                                                                                                        {
+                                                                                                            Rect: [
+                                                                                                                section.xPosition * origin.getWidth(),
+                                                                                                                (1-section.yPosition) * origin.getHeight(),
+                                                                                                                (section.xPosition + section.width) * origin.getWidth(),
+                                                                                                                (1-(section.yPosition + section.height)) * origin.getHeight()
+                                                                                                            ],
+                                                                                                            ...realasset.type == "PAGE" ? {page: realasset.link} : {},
+                                                                                                            ...realasset.type == "ASSET_REFERENCE" ? {url: realasset.threeQUrl || realasset.link} : {},
+                                                                                                        }
+                                                                                                    )
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                    }
                                                                                 }
                                                                                 if(chapter.chapters && chapter.chapters.length > 0) {
                                                                                     let chaptersDicts = chapter.chapters.map((c) => addOutlineChapter(c))
@@ -934,6 +965,21 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
 
                                                                             let outline = addOutlineChapter(uma.location, true)
                                                                             doc.catalog.set(pdflib.PDFName.of("Outlines"), doc.context.getObjectRef(outline))
+
+                                                                            Object.entries(pagesAnnotations).forEach(([pageNo, annotations]) => {
+                                                                                doc.getPage(parseInt(pageNo)).node.set(pdflib.PDFName.of("Annots"), doc.context.obj(
+                                                                                    annotations.map(anno => doc.context.obj({
+                                                                                        Type: "Annot",
+                                                                                        Subtype: "Link",
+                                                                                        Rect: anno.Rect,
+                                                                                        ...anno.page ? {Dest: [doc.getPage(pageMapping[anno.page]).ref, "XYZ", null, null, null]} : {},
+                                                                                        ...anno.url ? {A: {
+                                                                                            S: "URI",
+                                                                                            URI: pdflib.PDFString.of(anno.url)
+                                                                                        }} : {},
+                                                                                    }))
+                                                                                ))
+                                                                            })
 
                                                                             fs.writeFileSync(ebook.fileName, await doc.save())
                                                                         }
