@@ -17,10 +17,11 @@ A tool to download purchased e-books from different publishers.
 | Cornelsen ("New Method") | cornelsen.de | Lossless PDF | &check; | &check; |  |
 | Cornelsen ("Old Method") | cornelsen.de | Image (8617px x 11792px) composition | &check; | &cross; |  |
 | Cornelsen | scook.de | Image (?) composition | &cross; | &cross; | |
-| Allango Klett | allango.net | Lossless PDF | &check; | ? | allows to download files that are not owned |
+| Allango Klett | allango.net | Lossless PDF | &check; | ? | [^1] |
 | Klett | klett.de | Image (3072px x 4096px) composition | &check; | &check; | |
 | Westermann | westermann.de | Image (2244px x 3071px) composition | &check; | &cross; | |
 | C.C.BUCHNER | click-and-study.de | Image (1658px x 2211px) composition | &check; | &cross; | |
 
+[^1]: Website allows to download files that are not owned
 ## Disclaimer
 This project is for educational purposes only. The project is not responsible for any misuse of the software. Depending on your jurisdiction, it may be illegal to use this software to download e-books without the consent of the publisher. In other jurisdictions, it may be legal to download e-books for personal use only. Please check your local laws before using this software.
