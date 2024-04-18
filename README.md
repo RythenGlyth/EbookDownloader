@@ -17,6 +17,7 @@ A tool to download purchased e-books from different publishers.
 | Cornelsen ("New Method") | cornelsen.de | Lossless PDF | &check; | &check; |  |
 | Cornelsen ("Old Method") | cornelsen.de | Image (8617px x 11792px) composition | &check; | &cross; |  |
 | Cornelsen | scook.de | Image (?) composition | &cross; | &cross; | |
+| Allango Klett | allango.net | Lossless PDF | &check; | ? | allows to download files that are not owned |
 | Klett | klett.de | Image (3072px x 4096px) composition | &check; | &check; | |
 | Westermann | westermann.de | Image (2244px x 3071px) composition | &check; | &cross; | |
 | C.C.BUCHNER | click-and-study.de | Image (1658px x 2211px) composition | &check; | &cross; | |
