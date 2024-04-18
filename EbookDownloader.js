@@ -207,15 +207,15 @@ function allango(email, passwd, deleteAllOldTempImages) {
                             let startOfDay = new Date().setHours(0,0,0,0) / 1000
                             let endOfDay = new Date().setHours(23,59,59,999) / 1000
                             const book = (await prompts([{
-                                type: "select",
+                                type: "autocomplete",
                                 name: "book",
                                 message: "Select a book",
                                 warn: "Disabled options don't have downloadable content",
-                                choices: products.map(book => {
+                                choices: products.filter(book => book.npNumbers).map(book => {
                                     return {
                                         title: `${book.title}: ${book.bookDescription} (${book.isbn}) ${!book.license ? "(no license)" : !book.license.some(l => l.validFrom < endOfDay) ? "(not activated)" : !book.license.some(l => l.validTo > startOfDay) ? "(expired)" : ""}`,
                                         //disabled: !book.license.some(l => l.validTo > startOfDay && l.validFrom < endOfDay),
-                                        disabled: !book.npNumbers,
+                                        //disabled: !book.npNumbers,
                                         value: book
                                     }
                                 }).sort((a, b) => {
@@ -231,14 +231,14 @@ function allango(email, passwd, deleteAllOldTempImages) {
                                 }
                             }).then(async res => {
                                 const edition = (await prompts([{
-                                    type: "select",
+                                    type: "autocomplete",
                                     name: "edition",
                                     message: "Select a edition",
                                     warn: "Disabled options don't have downloadable content",
-                                    choices: res.data.editions.map(edition => {
+                                    choices: res.data.editions.filter(edition => edition.npNumber).map(edition => {
                                         return {
                                             title: `${edition.type}: ${edition.editionDescription} (${edition.npNumber}) ${!edition.license ? "(no license)" : !(edition.license.validFrom < endOfDay) ? "(not activated)" : !(edition.license.validTo > startOfDay) ? "(expired)" : ""}`,
-                                            disabled: !edition.npNumber,
+                                            //disabled: !edition.npNumber,
                                             value: edition
                                         }
                                     }).sort((a, b) => {
@@ -253,7 +253,8 @@ function allango(email, passwd, deleteAllOldTempImages) {
                                         'Authorization': `${token.token_type} ${token.access_token}`
                                     }
                                 }).then(res => {
-                                    console.log(res.data)
+                                    var name = `${book.title} - ${book.bookDescription} - ${edition.editionDescription}_lossless`.replace(/ü/, 'u').replace(/ä/, 'a').replace(/ö/, 'o').replace(/Ü/, 'U').replace(/Ä/, 'A').replace(/Ö/, 'O').replace(/[^a-za-z0-9 \(\)_\-,\.]/gi, '');
+                                    console.log("Starting download of " + name)
                                     axiosInstance({
                                         method: 'get',
                                         url: res.data.url,
@@ -262,8 +263,9 @@ function allango(email, passwd, deleteAllOldTempImages) {
                                             Refereer: 'https://www.allango.net/dau/' + edition.npNumber
                                         }
                                     }).then(res => {
-                                        var name = `${book.title} - ${book.bookDescription} - ${edition.editionDescription}_lossless`.replace(/ü/, 'u').replace(/ä/, 'a').replace(/ö/, 'o').replace(/Ü/, 'U').replace(/Ä/, 'A').replace(/Ö/, 'O').replace(/[^a-za-z0-9 \(\)_\-,\.]/gi, '');
-                                        res.data.pipe(fs.createWriteStream(`${name}.pdf`));
+                                        res.data.pipe(fs.createWriteStream(`${name}.pdf`)).on('finish', () => {
+                                            console.log("Downloaded " + name)
+                                        })
                                     }).catch(err => {
                                         console.log(err)
                                         console.log("allango pdf loading failed - e608")
