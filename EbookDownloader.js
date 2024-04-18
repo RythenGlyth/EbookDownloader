@@ -39,7 +39,7 @@ prompts([
     {
         type: 'select',
         name: 'publisher',
-        message: "Publisher",
+        message: "Publisher / Website",
         choices: [
             {
                 title: 'Cornelsen',
@@ -48,6 +48,10 @@ prompts([
             {
                 title: 'Klett',
                 value: "klett"
+            },
+            {
+                title: 'Klett allango',
+                value: "allango"
             },
             {
                 title: 'scook (Cornelsen) - old',
@@ -835,8 +839,8 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                                                     value: "old"
                                                                 }
                                                             ]
-                                                        }).then(res => {
-                                                            if(res.method == "new") {
+                                                        }).then(promptres => {
+                                                            if(promptres.method == "new") {
                                                                 var filename = name.replace(/[^a-zA-Z0-9 \(\)_\-,\.]/gi, '') + `_lossless`;
                                                                 var tmpFolder = "./DownloadTemp/" + filename + "/";
                                                                 if (deleteAllOldTempImages && fs.existsSync(tmpFolder)) fs.rmSync(tmpFolder, {
