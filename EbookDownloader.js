@@ -89,9 +89,11 @@ prompts([
         initial: true
     }
 ]).then(inputs => {
-    const config = JSON.parse(fs.readFileSync("./config.json", "utf-8") ?? "{}")
-    inputs.email = inputs.email || config?.[inputs.publisher]?.email;
-    inputs.passwd = inputs.passwd || config?.[inputs.publisher]?.passwd;
+    try {
+        const config = JSON.parse(fs.readFileSync("./config.json", "utf-8") ?? "{}")
+        inputs.email = inputs.email || config?.[inputs.publisher]?.email;
+        inputs.passwd = inputs.passwd || config?.[inputs.publisher]?.passwd;
+    } catch(ex) {}
 
     switch (inputs.publisher) {
         case "cornelsen":
