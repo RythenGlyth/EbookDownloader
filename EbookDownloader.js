@@ -120,7 +120,7 @@ function book2look(deleteAllOldTempImages) {
         {
             type: 'text',
             name: 'book2lookID',
-            message: 'Book2Look ID',
+            message: 'Book2Look ID (from URL: https://book2look.com/book/<ID> )',
         }
     ]).then(async (inputs) => {
         var book2lookID = inputs.book2lookID;
