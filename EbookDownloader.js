@@ -89,8 +89,9 @@ prompts([
         initial: true
     }
 ]).then(inputs => {
-    inputs.email = inputs.email || require("./config.json")?.[inputs.publisher]?.email;
-    inputs.passwd = inputs.passwd || require("./config.json")?.[inputs.publisher]?.passwd;
+    const config = JSON.parse(fs.readFileSync("./config.json", "utf-8") ?? "{}")
+    inputs.email = inputs.email || config?.[inputs.publisher]?.email;
+    inputs.passwd = inputs.passwd || config?.[inputs.publisher]?.passwd;
 
     switch (inputs.publisher) {
         case "cornelsen":
