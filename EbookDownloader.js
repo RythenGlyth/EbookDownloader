@@ -24,6 +24,7 @@ const transformationMatrix = require('transformation-matrix')
 
 const AdmZip  = require('adm-zip')
 const consumers = require('node:stream/consumers')
+const { PassThrough } = require('stream')
 
 function decomposeTSR(tsr) {
     return transformationMatrix.decomposeTSR(toAffineMatrix(tsr))
@@ -64,16 +65,20 @@ prompts([
             {
                 title: 'C.C.BUCHNER - click & study',
                 value: "clicknstudy"
+            },
+            {
+                title: 'book2look.com',
+                value: "book2look"
             }
         ]
     },
     {
-        type: 'text',
+        type: (prev, values) => values.publisher == "book2look" ? null : 'text',
         name: 'email',
         message: (prev, values) => values.publisher == "cornelsen" ? "Name (Empty to read from config)" : 'Email (Empty to read from config)'
     },
     {
-        type: 'password',
+        type: (prev, values) => values.publisher == 'book2look' ? null : 'password',
         name: 'passwd',
         message: "Pasword (Empty to read from config)",
     },
@@ -106,8 +111,110 @@ prompts([
         case "clicknstudy":
             clicknstudy(inputs.email, inputs.passwd, inputs.deleteAllOldTempImages)
             break;
+        case 'book2look':
+            book2look(inputs.deleteAllOldTempImages)
     }
 })
+function book2look(deleteAllOldTempImages) {
+    prompts([
+        {
+            type: 'text',
+            name: 'book2lookID',
+            message: 'Book2Look ID',
+        }
+    ]).then(async (inputs) => {
+        var book2lookID = inputs.book2lookID;
+        axios("https://www.book2look.com/html5/v5/config.xml?t=" + Date.now()).then(async (res) => {
+            parseString(res.data, async (err, parsedData) => {
+                if(err) {
+                    console.log(err)
+                    console.log("book2look config loading failed - e401")
+                    return;
+                }
+                const piv = Array.isArray(parsedData.config.piv) ? parsedData.config.piv[0] : parsedData.config.piv;
+                const ps = Array.isArray(parsedData.config.ps) ? parsedData.config.ps[0] : parsedData.config.ps;
+                axios(`https://www.book2look.com/BookContent/FlipBooks/${book2lookID}_assets/xml/bookData.xml?dt=${Date.now()}`).then(async (res) => {
+                    parseString(res.data, async (err, parsedData) => {
+                        if(err) {
+                            console.log(err)
+                            console.log("book2look book loading failed - e403")
+                            return;
+                        }
+                        const bookData = parsedData.bookData;
+                        const bookInfo = Array.isArray(bookData.bookInfo) ? bookData.bookInfo[0] : bookData.bookInfo;
+                        const title = Array.isArray(bookInfo.title) ? bookInfo.title[0] : bookInfo.title;
+                        const subtitle = Array.isArray(bookInfo.subtitle) ? bookInfo.subtitle[0] : bookInfo.subtitle;
+                        //console.log(bookData.bookInfo[0].title + bookData.bookInfo[0].subtitle)
+                        axios(`https://www.book2look.com/Report/GETBOOKID-New.aspx?id=${book2lookID}&refererpath=book2look.com&dct=true&objtype=PDFD&bibletformat=pdf`).then(async (res) => {
+                            axios(`https://www.book2look.com/${res.data}`).then(async (res) => {
+                                parseString(res.data, async (err, parsedData) => {
+                                    if(err) {
+                                        console.log(err)
+                                        console.log("book2look book loading failed - e406")
+                                        return;
+                                    }
+                                    const bookRunTimeData = parsedData.bookRunTimeData;
+                                    const euid = Array.isArray(bookRunTimeData.euid) ? bookRunTimeData.euid[0] : bookRunTimeData.euid;
+                                    //8 x number
+                                    const randomStr = Array(8).fill(0).map(() => Math.floor(Math.random() * 10)).join("");
+                                    axios(`https://bibletapi.book2look.com/api/Biblet/showbox?&AId=${euid}${String.fromCharCode(97 + Math.floor(Math.random() * 26))}${randomStr}`).then(async (res) => {
+                                        const encryptedKey = res.data;
+                                        crypto.pbkdf2(randomStr, ps, 1000, 16, 'sha1', (err, key) => {
+                                            if(err) {
+                                                console.log(err)
+                                                console.log("book2look decryption failed - e408")
+                                                return;
+                                            }
+                                            const iv = Buffer.from(piv, 'hex');
+                                            const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
+                                            let decrypted = decipher.update(encryptedKey, 'base64', 'utf8');
+                                            decrypted += decipher.final('utf8');
+                                            const password = decrypted;
+                                            console.log("Key: " + password)
+                                            console.log("Downloading PDF...")
+                                            axios(`https://www.book2look.com/BookContent/FlipBooks/${book2lookID}_assets/pdf/${book2lookID}.pdf`, {
+                                                responseType: 'arraybuffer'
+                                            }).then(async (res) => {
+
+                                                /** @type {typeof import("mupdf/dist/mupdf")} mupdf */
+                                                const mupdf = await import("mupdf")
+                                                /** @type {typeof import("mupdf/dist/mupdf").PDFDocument} doc */
+                                                const doc = mupdf.Document.openDocument(res.data, ".pdf")
+                                                console.log(doc.authenticatePassword(password))
+                                                const filename = `${title} - ${subtitle}.pdf`.replace(/[^a-za-z0-9 \(\)_\-,\.]/gi, '');
+                                                fs.writeFileSync(`${filename}`, doc.saveToBuffer("decrypt").asUint8Array())
+                                                console.log("Downloaded PDF")
+                                            }).catch(err => {
+                                                console.log(err)
+                                                console.log("book2look pdf download failed - e409")
+                                            })
+                                        })
+                                    }).catch(err => {
+                                        console.log(err)
+                                        console.log("book2look book loading failed - e407")
+                                    })
+                                })
+                            }).catch(err => {
+                                console.log(err)
+                                console.log("book2look book loading failed - e405")
+                            })
+                        }).catch(err => {
+                            console.log(err)
+                            console.log("book2look book loading failed - e404")
+                        })
+                    })
+                }).catch(err => {
+                    console.log(err)
+                    console.log("book2look book loading failed - e402")
+                })
+            })
+        }).catch(err => {
+            console.log(err)
+            console.log("book2look config loading failed - e400")
+        })
+    })
+
+}
 function allango(email, passwd, deleteAllOldTempImages) {
     const cookieJar = new tough.CookieJar();
     const axiosInstance = axios.create({

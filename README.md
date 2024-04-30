@@ -21,8 +21,10 @@ A tool to download purchased e-books from different publishers.
 | Klett | klett.de | Image (3072px x 4096px) composition | &check; | &check; | |
 | Westermann | westermann.de | Image (2244px x 3071px) composition | &check; | &cross; | |
 | C.C.BUCHNER | click-and-study.de | Image (1658px x 2211px) composition | &check; | &cross; | |
+| Book2Look | book2look.com | Lossless PDF | &check; | ? | [2] |
 
 [1]: Website allows to download files that are not owned
+[2]: No Account needed, only the book id
 
 ## Disclaimer
 This project is for educational purposes only. The project is not responsible for any misuse of the software. Depending on your jurisdiction, it may be illegal to use this software to download e-books without the consent of the publisher. In other jurisdictions, it may be legal to download e-books for personal use only. Please check your local laws before using this software.
