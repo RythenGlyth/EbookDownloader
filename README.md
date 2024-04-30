@@ -24,6 +24,7 @@ A tool to download purchased e-books from different publishers.
 | Book2Look | book2look.com | Lossless PDF | &check; | ? | [2] |
 
 [1]: Website allows to download files that are not owned
+
 [2]: No Account needed, only the book id
 
 ## Disclaimer
