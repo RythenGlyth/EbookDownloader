@@ -427,21 +427,41 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
         url: "https://www.click-and-study.de/"
     }).then(async (res) => {
         axiosInstance({
-            method: 'post',
-            url: "https://www.ccbuchner.de/clickandstudy/login.html?redirect=https://www.click-and-study.de/Buecher",
-            data: qs.stringify({
-                wako_email: email,
-                wako_passwort: passwd,
-                ct_redirect: "https://www.click-and-study.de/Buecher",
-                ct_btn_anmelden: ""
-            })
-        }).then((res) => {
-            const getUrl = (path) => new URL(path, "https://www.click-and-study.de/").href
+            method: "get",
+            url: "https://login.ccbuchner.de/realms/ccbuchner/protocol/openid-connect/auth",
+            params: {
+                client_id: "helliwood",
+                scope: "openid profile email wh",
+                response_type: "code",
+                redirect_uri: "https://www.click-and-study.de/Buecher",
+            }
+        }).then(async (res) => {
             const root = HTMLParser.parse(res.data);
             axiosInstance({
-                method: 'get',
-                url: root.querySelector("meta[http-equiv='refresh']").getAttribute("content").split(";")[1]
+                method: "post",
+                url: root.querySelector("form").getAttribute("action"),
+                data: qs.stringify({
+                    username: email,
+                    password: passwd,
+                }),
             }).then(async (res) => {
+        // axiosInstance({
+        //     method: 'post',
+        //     url: "https://www.ccbuchner.de/clickandstudy/login.html?redirect=https://www.click-and-study.de/Buecher",
+        //     data: qs.stringify({
+        //         wako_email: email,
+        //         wako_passwort: passwd,
+        //         ct_redirect: "https://www.click-and-study.de/Buecher",
+        //         ct_btn_anmelden: ""
+        //     })
+        // }).then((res) => {
+        //     const root = HTMLParser.parse(res.data);
+        //     axiosInstance({
+        //         method: 'get',
+        //         url: root.querySelector("meta[http-equiv='refresh']").getAttribute("content").split(";")[1]
+        //     }).then(async (res) => {
+
+                const getUrl = (path) => new URL(path, "https://www.click-and-study.de/").href
                 const root = HTMLParser.parse(res.data);
                 //console.log(res.data)
                 const books = root.querySelectorAll(".bookItem").map(book => {
