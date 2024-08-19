@@ -27,5 +27,9 @@ A tool to download purchased e-books from different publishers.
 
 [2]: No Account needed, only the book id
 
+## Contributing
+
+Feel free to create issues and pull requests to contribute to the project.
+
 ## Disclaimer
 This project is for educational purposes only. The project is not responsible for any misuse of the software. Depending on your jurisdiction, it may be illegal to use this software to download e-books without the consent of the publisher. In other jurisdictions, it may be legal to download e-books for personal use only. Please check your local laws before using this software.
