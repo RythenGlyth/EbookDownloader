@@ -464,12 +464,18 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
                 const getUrl = (path) => new URL(path, "https://www.click-and-study.de/").href
                 const root = HTMLParser.parse(res.data);
                 //console.log(res.data)
+                if (root.innerHTML.includes("Ungültige E-Mail oder Passwort.")) {
+                    throw new Error("Incorrect mail address or password!");
+                }
                 const books = root.querySelectorAll(".bookItem").map(book => {
                     return {
                         title: book.querySelector(".title").text,
                         link: getUrl(book.querySelector("a").getAttribute("href")),
                     }
                 });
+                if (books.length == 0) {
+                    throw new Error("No books found!");
+                }
                 var book = (await prompts([{
                     type: "select",
                     name: "book",
