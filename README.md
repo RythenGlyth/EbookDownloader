@@ -2,14 +2,32 @@
 
 A tool to download purchased e-books from different publishers.
 
-## Running
+## Prerequisites
 
-1. Clone or download the zip
+The tool uses image processing libraries and has to be executed with nodejs, therefore some dependencies are required
+
+### Windows
+
+
+1. Clone or download the repository
 1. Download `unifont-15.0.01.ttf` from http://www.unifoundry.com/pub/unifont/unifont-15.0.01/font-builds/unifont-15.0.01.ttf and put it in the project root
-1. install `image magick` and put the magick executable (named as `magick`) in the project root or add it to your path environment variable (required only for cornelsen "old method")
-1. install `ffmpeg` and put the ffmpeg executable in the project root or add it to your path environment variable
-1. run `npm install`
-1. run `npm start`
+1. Install `ffmpeg` and put the ffmpeg executable (named as `ffmpeg`) in the project root or add it to your path environment variable, if you need help you can follow [this](https://phoenixnap.com/kb/ffmpeg-windows) tutorial
+1. Install `nodejs` and `npm` if you haven't already, you can find help [here](https://phoenixnap.com/kb/install-node-js-npm-on-windows)
+1. Run `npm install`
+1. Optionally install `image magick` and put the magick executable (named as `magick`) in the project root or add it to your path environment variable (required only for cornelsen "old method")
+
+Alternatively you can run the `init.bat` installation script which will download all dependencies for you with chocolatey, a package manager for windows which will be installed by the script. It must be executed with admin priviledges.
+
+### Linux
+
+For Debian based distros run the installation script `init.sh` or execute the following steps manually:
+
+1. Clone or download the repository
+1. Run `wget "http://www.unifoundry.com/pub/unifont/unifont-15.0.01/font-builds/unifont-15.0.01.ttf"`
+1. Install packages `ffmpeg`, `nodejs`, `npm` and optionally `imagemagick` with your favorite package manager
+
+## Running
+Start the program by executing `npm start` from the project directory
 
 ## Supported Publishers (websites)
 | Publisher | Website | Best Quality | Selectable Text | Hyperrefs | Notes |
