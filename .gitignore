@@ -4,6 +4,7 @@ DownloadTemp/
 config.json
 
 *.pdf
+*.exe
 
 unifont-15.0.01.ttf
 Roboto-Thin.ttf
