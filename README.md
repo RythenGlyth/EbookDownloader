@@ -1,14 +1,33 @@
 # EbookDownloader
 A tool to download purchased e-books from different publishers.
 
-## Prerequisites
+## Supported Publishers (websites)
+| Publisher | Website | Best Quality | Selectable Text | Hyperrefs | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Cornelsen ("New Method") | cornelsen.de | Lossless PDF | &check; | &check; |  |
+| Cornelsen ("Old Method") | cornelsen.de | Image (8617px x 11792px) composition | &check; | &cross; |  |
+| Cornelsen | scook.de | Image (?) composition | &cross; | &cross; | |
+| Allango Klett | allango.net | Lossless PDF | &check; | ? | [1] |
+| Klett | klett.de | Image (3072px x 4096px) composition | &check; | &check; | |
+| Westermann | westermann.de | Image (2244px x 3071px) composition | &check; | &cross; | |
+| C.C.BUCHNER | click-and-study.de | Image (1658px x 2211px) composition | &check; | &cross; | |
+| Book2Look | book2look.com | Lossless PDF | &check; | ? | [2] |
+
+[1]: Website allows to download files that are not owned
+
+[2]: No Account needed, only the book id
+
+## Automatic Installation
 At first, clone or download the repository.
 
 The tool uses image processing libraries and has to be executed with nodejs, therefore some dependencies are required.
 
-You can eiher use the installation scripts (`init.bat` for Windows, `init.sh` for Debian based distros) or use manual installation. The Windows installation script will download all dependencies for you with chocolatey, a package manager for windows which will be installed by the script. It must be executed with admin priviledges.
+You can eiher use the installation scripts (`init.bat` for Windows, `init.sh` for Debian based distros) or use manual installation. The installation scripts will download all dependencies for you.
 
-Steps for manual installation:
+The Windows installation script uses chocolatey, a package manager for windows which will also be installed by the script. It must be executed with admin priviledges.
+
+## Manual Installation
+At first, clone or download the repository. Then follow the os-specific instructions below:
 
 ### Windows
 1. Download `unifont-15.0.01.ttf` from http://www.unifoundry.com/pub/unifont/unifont-15.0.01/font-builds/unifont-15.0.01.ttf and put it in the project root
@@ -25,22 +44,6 @@ Steps for manual installation:
 
 ## Running
 Start the program by executing `npm start` from the project directory.
-
-## Supported Publishers (websites)
-| Publisher | Website | Best Quality | Selectable Text | Hyperrefs | Notes |
-| --- | --- | --- | --- | --- | --- |
-| Cornelsen ("New Method") | cornelsen.de | Lossless PDF | &check; | &check; |  |
-| Cornelsen ("Old Method") | cornelsen.de | Image (8617px x 11792px) composition | &check; | &cross; |  |
-| Cornelsen | scook.de | Image (?) composition | &cross; | &cross; | |
-| Allango Klett | allango.net | Lossless PDF | &check; | ? | [1] |
-| Klett | klett.de | Image (3072px x 4096px) composition | &check; | &check; | |
-| Westermann | westermann.de | Image (2244px x 3071px) composition | &check; | &cross; | |
-| C.C.BUCHNER | click-and-study.de | Image (1658px x 2211px) composition | &check; | &cross; | |
-| Book2Look | book2look.com | Lossless PDF | &check; | ? | [2] |
-
-[1]: Website allows to download files that are not owned
-
-[2]: No Account needed, only the book id
 
 ## Contributing
 
