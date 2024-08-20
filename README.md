@@ -1,33 +1,30 @@
 # EbookDownloader
-
 A tool to download purchased e-books from different publishers.
 
 ## Prerequisites
+At first, clone or download the repository.
 
-The tool uses image processing libraries and has to be executed with nodejs, therefore some dependencies are required
+The tool uses image processing libraries and has to be executed with nodejs, therefore some dependencies are required.
+
+You can eiher use the installation scripts (`init.bat` for Windows, `init.sh` for Debian based distros) or use manual installation. The Windows installation script will download all dependencies for you with chocolatey, a package manager for windows which will be installed by the script. It must be executed with admin priviledges.
+
+Steps for manual installation:
 
 ### Windows
-
-
-1. Clone or download the repository
 1. Download `unifont-15.0.01.ttf` from http://www.unifoundry.com/pub/unifont/unifont-15.0.01/font-builds/unifont-15.0.01.ttf and put it in the project root
 1. Install `ffmpeg` and put the ffmpeg executable (named as `ffmpeg`) in the project root or add it to your path environment variable, if you need help you can follow [this](https://phoenixnap.com/kb/ffmpeg-windows) tutorial
 1. Install `nodejs` and `npm` if you haven't already, you can find help [here](https://phoenixnap.com/kb/install-node-js-npm-on-windows)
 1. Run `npm install`
 1. Optionally install `image magick` and put the magick executable (named as `magick`) in the project root or add it to your path environment variable (required only for cornelsen "old method")
 
-Alternatively you can run the `init.bat` installation script which will download all dependencies for you with chocolatey, a package manager for windows which will be installed by the script. It must be executed with admin priviledges.
-
 ### Linux
-
-For Debian based distros run the installation script `init.sh` or execute the following steps manually:
-
 1. Clone or download the repository
 1. Run `wget "http://www.unifoundry.com/pub/unifont/unifont-15.0.01/font-builds/unifont-15.0.01.ttf"`
-1. Install packages `ffmpeg`, `nodejs`, `npm` and optionally `imagemagick` with your favorite package manager
+1. Install packages `ffmpeg`, `nodejs`, `npm` and optionally `imagemagick` (required only for cornelsen "old method") with your favorite package manager
+1. Run `npm install`
 
 ## Running
-Start the program by executing `npm start` from the project directory
+Start the program by executing `npm start` from the project directory.
 
 ## Supported Publishers (websites)
 | Publisher | Website | Best Quality | Selectable Text | Hyperrefs | Notes |
