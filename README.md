@@ -22,9 +22,7 @@ At first, clone or download the repository.
 
 The tool uses image processing libraries and has to be executed with nodejs, therefore some dependencies are required.
 
-You can eiher use the installation scripts (`init.bat` for Windows, `init.sh` for Debian based distros) or use manual installation. The installation scripts will download all dependencies for you.
-
-The Windows installation script uses chocolatey, a package manager for windows which will also be installed by the script. It must be executed with admin priviledges.
+You can eiher use the installation scripts (`init.bat` for Windows, `init.sh` for Debian based distros) or use manual installation. The installation scripts will download all dependencies for you. To execute them, double click the `.bat` file on windows or execute the `.sh` file in the terminal on linux after adding execution permissions to the `.sh` file.
 
 ## Manual Installation
 At first, clone or download the repository. Then follow the os-specific instructions below:
@@ -37,13 +35,13 @@ At first, clone or download the repository. Then follow the os-specific instruct
 1. Optionally install `image magick` and put the magick executable (named as `magick`) in the project root or add it to your path environment variable (required only for cornelsen "old method")
 
 ### Linux
-1. Clone or download the repository
 1. Run `wget "http://www.unifoundry.com/pub/unifont/unifont-15.0.01/font-builds/unifont-15.0.01.ttf"`
-1. Install packages `ffmpeg`, `nodejs`, `npm` and optionally `imagemagick` (required only for cornelsen "old method") with your favorite package manager
+1. Install packages `ffmpeg`, `nodejs` and optionally `imagemagick` (required only for cornelsen "old method") with your favorite package manager
 1. Run `npm install`
 
 ## Running
-Start the program by executing `npm start` from the project directory.
+Complete the setup by running `npm install` in the project directory and
+start the program by executing `npm start` from the project directory.
 
 ## Contributing
 
