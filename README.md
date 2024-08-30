@@ -1,15 +1,5 @@
 # EbookDownloader
-
 A tool to download purchased e-books from different publishers.
-
-## Running
-
-1. Clone or download the zip
-1. Download `unifont-15.0.01.ttf` from http://www.unifoundry.com/pub/unifont/unifont-15.0.01/font-builds/unifont-15.0.01.ttf and put it in the project root
-1. install `image magick` and put the magick executable in the project root or add it to your path environment variable
-1. install `ffmpeg` and put the ffmpeg executable in the project root or add it to your path environment variable
-1. run `npm install`
-1. run `npm start`
 
 ## Supported Publishers (websites)
 | Publisher | Website | Best Quality | Selectable Text | Hyperrefs | Notes |
@@ -26,6 +16,36 @@ A tool to download purchased e-books from different publishers.
 [1]: Website allows to download files that are not owned
 
 [2]: No Account needed, only the book id
+
+## Automatic Installation
+At first, clone or download the repository.
+
+The tool uses image processing libraries and has to be executed with nodejs, therefore some dependencies are required.
+
+You can eiher use the installation scripts (`init.bat` for Windows, `init.sh` for Debian based distros) or use manual installation. The installation scripts will download all dependencies for you. To execute them, double click the `.bat` file on windows or execute the `.sh` file in the terminal on linux after adding execution permissions to the `.sh` file.
+
+## Manual Installation
+At first, clone or download the repository. Then follow the os-specific instructions below:
+
+### Windows
+1. Download `unifont-15.0.01.ttf` from http://www.unifoundry.com/pub/unifont/unifont-15.0.01/font-builds/unifont-15.0.01.ttf and put it in the project root
+1. Install `ffmpeg` and put the ffmpeg executable (named as `ffmpeg`) in the project root or add it to your path environment variable, if you need help you can follow [this](https://phoenixnap.com/kb/ffmpeg-windows) tutorial
+1. Install `nodejs` and `npm` if you haven't already, you can find help [here](https://phoenixnap.com/kb/install-node-js-npm-on-windows)
+1. Run `npm install`
+1. Optionally install `image magick` and put the magick executable (named as `magick`) in the project root or add it to your path environment variable (required only for cornelsen "old method")
+
+### Linux
+1. Run `wget "http://www.unifoundry.com/pub/unifont/unifont-15.0.01/font-builds/unifont-15.0.01.ttf"`
+1. Install packages `ffmpeg`, `nodejs` and optionally `imagemagick` (required only for cornelsen "old method") with your favorite package manager
+1. Run `npm install`
+
+## Running
+Complete the setup by running `npm install` in the project directory and
+start the program by executing `npm start` from the project directory.
+
+## Contributing
+
+Feel free to create issues and pull requests to contribute to the project.
 
 ## Disclaimer
 This project is for educational purposes only. The project is not responsible for any misuse of the software. Depending on your jurisdiction, it may be illegal to use this software to download e-books without the consent of the publisher. In other jurisdictions, it may be legal to download e-books for personal use only. Please check your local laws before using this software.
