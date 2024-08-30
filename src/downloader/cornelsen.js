@@ -1,7 +1,7 @@
 const readline = require('readline');
-const axios = require('axios').default;
+const axios = require('axios');
 const qs = require('querystring');
-const axiosCookieJarSupport = require('axios-cookiejar-support').default;
+const axiosCookieJarSupport = require('axios-cookiejar-support').wrapper;
 const tough = require('tough-cookie');
 const fs = require('fs');
 const PDFDoc = require('pdfkit');
@@ -25,6 +25,9 @@ const transformationMatrix = require('transformation-matrix')
 const AdmZip  = require('adm-zip')
 const consumers = require('node:stream/consumers')
 const { PassThrough } = require('stream')
+const { zeroPad } = require('../utils')
+
+axiosCookieJarSupport(axios);
 
 function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
     console.log("Logging in and getting Book list")
