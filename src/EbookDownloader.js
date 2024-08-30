@@ -85,12 +85,12 @@ prompts([
     {
         type: (prev, values) => values.publisher == "book2look" ? null : 'text',
         name: 'email',
-        message: (prev, values) => values.publisher == "cornelsen" ? "Name (Empty to read from config)" : 'Email (Empty to read from config)'
+        message: (prev, values) => values.publisher == "cornelsen" ? "Name (Empty to read from config.json)" : 'Email (Empty to read from config.json)'
     },
     {
         type: (prev, values) => values.publisher == 'book2look' ? null : 'password',
         name: 'passwd',
-        message: "Pasword (Empty to read from config)",
+        message: "Pasword (Empty to read from config.json)",
     },
     {
         type: 'confirm',
