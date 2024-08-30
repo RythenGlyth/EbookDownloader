@@ -87,7 +87,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                 }).then(res => {
                                     var clientId = res.data.match(/authority\s*:\s*"https:\/\/id.cornelsen.de\/"\s*,\s*clientId\s*:\s*"(.*?)"/m)[1];*/
                                     var clientId = "@!38C4.659F.8000.3A79!0001!7F12.03E3!0008!E3BA.CEBF.4551.8EBD" //from windows desktop app
-                                    console.log("Got client id: " + clientId)
+                                    //console.log("Got client id: " + clientId)
                                     var code_verifier = crypto.randomBytes(48).toString('hex');
                                     var nonce = crypto.randomBytes(16).toString('hex')
                                     axiosInstance({
@@ -109,9 +109,9 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                             return status >= 200 && status < 303;
                                         }
                                     }).then(res => {
-                                        console.log(res.headers.location)
+                                        // console.log(res.headers.location)
                                         var code = res.headers.location.match(/code=(.*?)&/)[1];
-                                        console.log("Got code: " + code)
+                                        // console.log("Got code: " + code)
                                         axiosInstance({
                                             method: 'post',
                                             url: "https://id.cornelsen.de/oxauth/restv1/token",
@@ -129,7 +129,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                         }).then(res => {
                                             var id_token = res.data.id_token;
 
-                                            console.log("Got access token: " + id_token)
+                                            // console.log("Got access token: " + id_token)
 
                                             //console.log(cookieJar.toJSON().cookies.find(c => c.key == "cornelsen-jwt").value);
                                             axiosInstance({
