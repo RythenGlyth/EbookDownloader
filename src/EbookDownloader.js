@@ -36,6 +36,7 @@ const clicknstudy = require('./downloader/clicknstudy')
 const klett = require('./downloader/klett')
 const westermann = require('./downloader/westermann')
 const scook = require('./downloader/scook')
+const cornelsench = require('./downloader/cornelsench')
 
 prompts([
     {
@@ -71,6 +72,10 @@ prompts([
                 title: 'book2look.com',
                 value: "book2look"
             },
+            {
+                title: 'Cornelsen.ch',
+                value: "cornelsench"
+            },
             // {
             //     title: "kiosquemag.com",
             //     value: "kiosquemag"
@@ -96,7 +101,6 @@ prompts([
 ]).then(inputs => {
     try {
         const config = JSON.parse(fs.readFileSync("./config.json", "utf-8") ?? "{}")
-        console.log(config)
         inputs.email = inputs.email || config?.[inputs.publisher]?.email;
         inputs.passwd = inputs.passwd || config?.[inputs.publisher]?.passwd;
     } catch(ex) {}
@@ -122,6 +126,9 @@ prompts([
             break;
         case "kiosquemag":
             kiosquemag(inputs.email, inputs.passwd, inputs.deleteAllOldTempImages)
+            break;
+        case "cornelsench":
+            cornelsench(inputs.email, inputs.passwd, inputs.deleteAllOldTempImages, true)
             break;
         case 'book2look':
             book2look(inputs.deleteAllOldTempImages)
