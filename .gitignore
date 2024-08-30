@@ -2,6 +2,7 @@ node_modules/
 package-lock.json
 DownloadTemp/
 config.json
+out/
 
 *.pdf
 

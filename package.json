@@ -1,8 +1,9 @@
 {
   "dependencies": {
     "adm-zip": "^0.5.10",
-    "axios": "^0.21.4",
-    "axios-cookiejar-support": "^1.0.1",
+    "axios": "^1.7.5",
+    "axios-cookiejar-support": "^5.0.2",
+    "ebookdownloader": "file:",
     "iconv": "^3.0.1",
     "image-size": "^1.0.2",
     "mupdf": "^0.2.1",
@@ -11,9 +12,9 @@
     "pdfkit": "^0.11.0",
     "prompts": "^2.4.0",
     "querystring": "^0.2.0",
-    "tough-cookie": "^4.0.0",
+    "tough-cookie": "^4.1.4",
     "transformation-matrix": "^2.13.0",
-    "xml2js": "^0.4.23"
+    "xml2js": "^0.6.2"
   },
   "bin": "EbookDownloader.js",
   "pkg": {
@@ -28,7 +29,7 @@
   "version": "1.0.0",
   "main": "EbookDownloader.js",
   "scripts": {
-    "start": "node EbookDownloader.js",
+    "start": "node --no-deprecation src/EbookDownloader.js",
     "build": "pkg --output build/ ."
   },
   "author": "RythenGlyth",
