@@ -2,4 +2,5 @@ wget "http://www.unifoundry.com/pub/unifont/unifont-15.0.01/font-builds/unifont-
 sudo apt install imagemagick
 sudo apt install ffmpeg
 sudo apt install nodejs npm
+sudo apt install mupdf
 npm install

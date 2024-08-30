@@ -1,5 +1,5 @@
 const readline = require('readline');
-const axios = require('axios');
+const axios = require('axios').default;
 const qs = require('querystring');
 const axiosCookieJarSupport = require('axios-cookiejar-support').wrapper;
 const tough = require('tough-cookie');
@@ -86,17 +86,33 @@ function book2look(deleteAllOldTempImages) {
                                             console.log("Key: " + password)
                                             console.log("Downloading PDF...")
                                             axios(`https://www.book2look.com/BookContent/FlipBooks/${book2lookID}_assets/pdf/${book2lookID}.pdf`, {
-                                                responseType: 'arraybuffer'
+                                                responseType: 'stream'
                                             }).then(async (res) => {
-
-                                                /** @type {typeof import("mupdf/dist/mupdf")} mupdf */
-                                                const mupdf = await import("mupdf")
-                                                /** @type {typeof import("mupdf/dist/mupdf").PDFDocument} doc */
-                                                const doc = mupdf.Document.openDocument(res.data, ".pdf")
-                                                console.log(doc.authenticatePassword(password))
                                                 const filename = `${title} - ${subtitle}.pdf`.replace(/[^a-za-z0-9 \(\)_\-,\.]/gi, '');
-                                                fs.writeFileSync(`./out/${filename}`, doc.saveToBuffer("decrypt").asUint8Array())
-                                                console.log("Downloaded PDF")
+                                                res.data.pipe(fs.createWriteStream(`./out/DownloadTemp/${filename}`)).on('finish', async () => {
+                                                    console.log("Downloaded PDF")
+                                                    console.log("Decrypting PDF...")
+                                                    
+                                                    let mutool = spawn('mutool', ['clean', '-D', '-p', password, `./out/DownloadTemp/${filename}`, `./out/${filename}`]);
+                                                    mutool.on('exit', (code) => {
+                                                        console.log(`child process exited with code ${code}`);
+                                                        if(code === 0) {
+                                                            console.log("Decrypted PDF")
+                                                            console.log("Wrote PDF to out/" + filename)
+                                                        } else {
+                                                            console.log("Decryption failed - e410")
+                                                        }
+                                                    })
+                                                })
+
+                                                // /** @type {typeof import("mupdf/dist/mupdf")} mupdf */
+                                                // const mupdf = await import("mupdf")
+                                                // /** @type {typeof import("mupdf/dist/mupdf").PDFDocument} doc */
+                                                // const doc = mupdf.Document.openDocument(res.data, ".pdf")
+                                                // console.log(doc.authenticatePassword(password))
+                                                
+                                                // fs.writeFileSync(`./out/${filename}`, doc.saveToBuffer("decrypt").asUint8Array())
+                                                // console.log("Downloaded PDF")
                                             }).catch(err => {
                                                 console.log(err)
                                                 console.log("book2look pdf download failed - e409")

@@ -11,6 +11,7 @@ Rem choco install imagemagick -y
 winget install ImageMagick.ImageMagick
 winget install Gyan.FFmpeg
 winget install OpenJS.NodeJS
+winget install ArtifexSoftware.mutool
 
 REM npm install
 REM on fresh nodejs install npm is not loaded
