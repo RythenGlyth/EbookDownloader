@@ -1,6 +1,8 @@
 # EbookDownloader
 A tool to download purchased e-books from different publishers.
 
+![Preview](preview.png)
+
 ## Table of Contents
 - [Supported Publishers (websites)](#supported-publishers-websites)
 - [Automatic Installation](#automatic-installation)
