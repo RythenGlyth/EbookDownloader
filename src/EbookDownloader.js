@@ -76,10 +76,10 @@ prompts([
                 title: 'Cornelsen.ch',
                 value: "cornelsench"
             },
-            // {
-            //     title: "kiosquemag.com",
-            //     value: "kiosquemag"
-            // }
+            {
+                title: "kiosquemag.com",
+                value: "kiosquemag"
+            }
         ]
     },
     {

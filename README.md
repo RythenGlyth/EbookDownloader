@@ -21,6 +21,7 @@ A tool to download purchased e-books from different publishers.
 | Westermann | westermann.de | Image (2244px x 3071px) composition | &check; | &cross; | |
 | C.C.BUCHNER | click-and-study.de | Image (1658px x 2211px) composition | &check; | &cross; | |
 | Book2Look | book2look.com | Lossless PDF | &check; | ? | [2] |
+| kiosquemag | kiosquemag.com | Image (?) composition | &cross; | &cross; | |
 
 [1]: Website allows to download files that are not owned
 
