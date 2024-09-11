@@ -80,12 +80,15 @@ function book2look(deleteAllOldTempImages) {
                                             }
                                             const iv = Buffer.from(piv, 'hex');
                                             const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
-                                            let decrypted = decipher.update(encryptedKey, 'base64', 'utf8');
-                                            decrypted += decipher.final('utf8');
-                                            const password = decrypted;
+                                            let password;
+                                            if(encryptedKey.length) {
+                                                let decrypted = decipher.update(encryptedKey, 'base64', 'utf8');
+                                                decrypted += decipher.final('utf8');
+                                                password = decrypted;
+                                            }
                                             console.log("Key: " + password)
                                             console.log("Downloading PDF...")
-                                            axios(`https://www.book2look.com/BookContent/FlipBooks/${book2lookID}_assets/pdf/${book2lookID}.pdf`, {
+                                            axios(`https://c95871.ssl.cf3.rackcdn.com/${book2lookID}_assets/pdf/${book2lookID}.pdf`, {
                                                 responseType: 'stream'
                                             }).then(async (res) => {
                                                 const filename = `${title} - ${subtitle}.pdf`.replace(/[^a-za-z0-9 \(\)_\-,\.]/gi, '');
