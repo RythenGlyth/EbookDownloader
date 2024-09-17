@@ -90,7 +90,7 @@ prompts([
     {
         type: (prev, values) => values.publisher == 'book2look' ? null : 'password',
         name: 'passwd',
-        message: "Pasword (Empty to read from config.json)",
+        message: "Password (Empty to read from config.json)",
     },
     {
         type: 'confirm',
