@@ -54,6 +54,25 @@ At first, clone or download the repository. Then follow the os-specific instruct
 Complete the setup by running `npm install` in the project directory and
 start the program by executing `npm start` from the project directory.
 
+## Saving credentials to avoid entering them every time (optional)
+You can save your credentials in a `config.json` file to avoid entering them every time you start the program. To do this, create a file named `config.json` in the project root and add the following content:
+
+```json
+{
+    "[PUBLISHER]": {
+        "email": "[YOUR_USERNAME_OR_EMAIL]", 
+        "passwd": "[YOUR_PASSWORD]"
+    },
+    "[PUBLISHER]": {
+        "email": "[YOUR_USERNAME_OR_EMAIL]", 
+        "passwd": "[YOUR_PASSWORD]"
+    }
+    [...]
+}
+```
+
+Publisher keys are: `cornelsen`, `klett`, `allango`, `scook`, `westermann`, `clicknstudy`, `kiosquemag`, `cornelsench`, `book2look` 
+
 ## Contributing
 
 Feel free to create issues and pull requests to contribute to the project.
