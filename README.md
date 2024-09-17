@@ -71,7 +71,7 @@ You can save your credentials in a `config.json` file to avoid entering them eve
 }
 ```
 
-Publisher keys are: `cornelsen`, `klett`, `allango`, `scook`, `westermann`, `clicknstudy`, `kiosquemag`, `cornelsench`, `book2look` 
+Replace all the square brackets with your data. Publisher keys are: `cornelsen`, `klett`, `allango`, `scook`, `westermann`, `clicknstudy`, `kiosquemag`, `cornelsench`, `book2look` 
 
 ## Contributing
 
