@@ -54,7 +54,7 @@ function westermann(email, passwd, deleteAllOldTempImages) {
             }}
             */
             var mainjs = res.data;
-            var p = mainjs.match(/environmentName\w*:\w*/).index;
+            var p = mainjs.match(/backendUrl\w*:\w*/).index;
             var environment = expandToNearestJSONObject(mainjs, p)
             /*var p0 = p;
             for(var braces = 0; braces != -1; p0--) {
