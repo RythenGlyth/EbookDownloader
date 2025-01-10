@@ -5,5 +5,6 @@ pkgs.mkShell {
     nodejs
     mupdf
     imagemagick
+    python3
   ];
 }
