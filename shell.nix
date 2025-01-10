@@ -6,5 +6,6 @@ pkgs.mkShell {
     mupdf
     imagemagick
     python3
+    wget
   ];
 }
