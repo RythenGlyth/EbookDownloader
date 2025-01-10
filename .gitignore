@@ -9,3 +9,5 @@ out/
 
 unifont-15.0.01.ttf
 Roboto-Thin.ttf
+
+.direnv/
