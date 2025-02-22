@@ -50,6 +50,11 @@ At first, clone or download the repository. Then follow the os-specific instruct
 1. Install packages `ffmpeg`, `nodejs`, `mutool`/`mupdf-tools`/`mupdf`  (required for book2look and cornelsen.ch) and optionally `imagemagick` (required only for cornelsen "old method") with your favorite package manager
 1. Run `npm install`
 
+### Linux/Darwin with Nix
+- If you have nix-direnv, run `direnv allow` to obtain all dependencies
+- Otherwise, run `nix-shell`.
+- Run `wget "http://www.unifoundry.com/pub/unifont/unifont-15.0.01/font-builds/unifont-15.0.01.ttf"`
+
 ## Running
 Complete the setup by running `npm install` in the project directory and
 start the program by executing `npm start` from the project directory.
@@ -72,6 +77,36 @@ You can save your credentials in a `config.json` file to avoid entering them eve
 ```
 
 Replace all the square brackets with your data. Publisher keys are: `cornelsen`, `klett`, `allango`, `scook`, `westermann`, `clicknstudy`, `kiosquemag`, `cornelsench`, `book2look` 
+
+## Bildungslogin
+
+Cornelsen and Westermann have token-login support, allowing login using Bildungslogin accounts.
+
+### Cornelsen
+
+1. Open Bildungslogin and log in
+1. Go into Storage devtools (SHIFT+F9, or alternatively press CTRL+SHIFT+I and click on Storage tab).
+1. Open the book
+1. Select Local storage in the devtools (possibly also need to select the website in it)
+1. Scroll down in the table that opens until you find `id_token`. It should be a long alphanumeric string.
+1. Copy it. (Double click, then ctrl+c)
+1. Use it as the password, and use `token` as the username.
+
+### Westermann
+
+1. Open Bildungslogin and log in
+1. Open the book
+1. Go into Networking devtools (CTRL+SHIFT+E, or alternatively press CTRL+SHIFT+I and click on Network tab).
+1. Tick `Persist logs` (possibly in Gear menu, likely at top right somewhere)
+1. Reload the page
+1. Enter `/api/user` into the "Filter URLs" field of devtools
+1. Click the first entry that does *not* say OPTIONS
+1. A little pane to the side should open. Click on its Headers tab
+1. Enter `auth` into its "Filter headers" field (if available)
+1. Scroll down until you find a long string of letters and numbers
+1. Copy it and paste it into a text document
+1. Copy it from there again, but make sure NOT to select the "Authorization: Bearer " part, only the long string at the end.
+1. Use it as the password, and use `token` as the username.
 
 ## Contributing
 
