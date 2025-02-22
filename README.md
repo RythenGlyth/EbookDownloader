@@ -8,6 +8,8 @@ A tool to download purchased e-books from different publishers.
 - [Automatic Installation](#automatic-installation)
 - [Manual Installation](#manual-installation)
 - [Running](#running)
+- [Saving Credentials](#saving-credentials-to-avoid-entering-them-every-time-optional)
+- [Bildungslogin (Cornelsen / Westermann)](#bildungslogin)
 
 ## Supported Publishers (websites)
 | Publisher | Website | Best Quality | Selectable Text | Hyperrefs | Notes |
