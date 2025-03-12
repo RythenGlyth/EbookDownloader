@@ -88,7 +88,7 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                 }])
 
 
-                var name = values.license.title.replace(/[^a-zA-Z0-9 \(\)_\-,\.]/gi, '') + "_" + `${values2.quality.width}x${values2.quality.height}`;
+                var name = title.replace(/[^a-zA-Z0-9 \(\)_\-,\.]/gi, '') + "_" + `${values2.quality.width}x${values2.quality.height}`;
                 var folder = ("./out/DownloadTemp/" + name + "/");
                 if (deleteAllOldTempImages && fs.existsSync(folder)) fs.rmSync(folder, {
                     recursive: true,
