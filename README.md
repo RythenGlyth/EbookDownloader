@@ -82,7 +82,7 @@ Replace all the square brackets with your data. Publisher keys are: `cornelsen`,
 
 ## Bildungslogin
 
-Cornelsen, Click-n-Study, and Westermann have token-login support, allowing login using Bildungslogin accounts.
+Cornelsen, Click-n-Study, Klett, and Westermann have token-login support, allowing login using Bildungslogin accounts.
 
 ### Cornelsen
 
@@ -103,6 +103,16 @@ Cornelsen, Click-n-Study, and Westermann have token-login support, allowing logi
 1. Scroll down in the table that opens until you find `CASSID`. It should have an alphanumeric string afterwards.
 1. Copy that (the random looking characters). (Double click, then ctrl+c)
 1. Use it as the password, and use `token` as the username.
+
+### Klett
+
+1. Open Bildungslogin and log in
+1. Open the book
+1. Go into Storage devtools (SHIFT+F9, or alternatively press CTRL+SHIFT+I and click on Storage tab).
+1. Select Cookies in the devtools (possibly also need to select the website in it)
+1. Scroll down in the table that opens until you find `SESSION`. It should have an alphanumeric string afterwards.
+1. Copy that (the random looking characters). (Double click, then ctrl+c)
+1. Use it as the password, and use **the URL of the book viewer you are on** as the username.
 
 ### Westermann
 
