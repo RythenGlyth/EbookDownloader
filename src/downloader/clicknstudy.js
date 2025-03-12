@@ -49,7 +49,7 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
     async function handleBuecher(res) {
         const getUrl = (path) => new URL(path, "https://www.click-and-study.de/").href
         const root = HTMLParser.parse(res.data);
-        console.log(res.data)
+        //console.log(res.data)
         if (root.innerHTML.includes("Ungültige E-Mail oder Passwort.")) {
             throw new Error("Incorrect mail address or password!");
         }
