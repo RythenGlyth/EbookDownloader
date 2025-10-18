@@ -33,6 +33,7 @@ const kiosquemag = require('./downloader/kiosquemag')
 const book2look = require('./downloader/book2look')
 const allango = require('./downloader/allango')
 const clicknstudy = require('./downloader/clicknstudy')
+const clicknteach = require('./downloader/clicknteach')
 const klett = require('./downloader/klett')
 const westermann = require('./downloader/westermann')
 const scook = require('./downloader/scook')
@@ -67,6 +68,10 @@ prompts([
             {
                 title: 'C.C.BUCHNER - click & study',
                 value: "clicknstudy"
+            },
+            {
+                title: 'C.C.BUCHNER - click & teach',
+                value: "clicknteach"
             },
             {
                 title: 'book2look.com',
@@ -123,6 +128,9 @@ prompts([
             break;
         case "clicknstudy":
             clicknstudy(inputs.email, inputs.passwd, inputs.deleteAllOldTempImages)
+            break;
+        case "clicknteach":
+            clicknteach(inputs.email, inputs.passwd, inputs.deleteAllOldTempImages)
             break;
         case "kiosquemag":
             kiosquemag(inputs.email, inputs.passwd, inputs.deleteAllOldTempImages)
