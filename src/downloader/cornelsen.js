@@ -134,7 +134,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                             fileName: filename + "_sf.pdf",
                                             comment: "Schülerfassung"
                                         })
-                                    
+
                                     uma.ebookIsbnLbNum
                                         && fs.existsSync(path.join(tmpFolder, uma.ebookIsbnLbNum + "_lf.pdf")) &&
                                         ebooks.push({
@@ -162,41 +162,52 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                         console.log("Decrypted " + ebook.fileName)
 
                                         let doc = await pdflib.PDFDocument.load(output)
+										const totalPages = doc.getPageCount(); // FIX
 
                                         //let pageRefs = []
                                         //doc.catalog.Pages().traverse((node, ref) => node instanceof pdflib.PDFPageLeaf && pageRefs.push(ref))
                                         let pagesAnnotations = {}
                                         let pageMapping = {}
 
-                                        function addOutlineChapter(chapter, root=false) {
-                                            let ref = doc.context.nextRef()
-                                            let map = new Map()
-                                            if(root) {
-                                                map.set(pdflib.PDFName.Type, pdflib.PDFString.of("Outlines"))
-                                            } else {
-                                                map.set(pdflib.PDFName.Title, pdflib.PDFString.of(chapter.headline))
-                                            }
-                                            if(chapter.pages && chapter.pages.length > 0) {
+                                    function addOutlineChapter(chapter, root=false) {
+                                        let ref = doc.context.nextRef()
+                                        let map = new Map()
+                                        if(root) {
+                                            map.set(pdflib.PDFName.Type, pdflib.PDFString.of("Outlines"))
+                                        } else {
+                                            map.set(pdflib.PDFName.Title, pdflib.PDFString.of(chapter.headline))
+                                        }
+                                        if(chapter.pages && chapter.pages.length > 0) {
+
+                                            // --- FIX: Add boundary check for outline destination ---
+                                            const pageNo = chapter.pages[0]["pageNo"];
+                                            if (pageNo >= 0 && pageNo < totalPages) {
                                                 let arr = pdflib.PDFArray.withContext(doc.context)
-                                                arr.push(doc.getPage(chapter.pages[0]["pageNo"]).ref)
+                                                arr.push(doc.getPage(pageNo).ref)
                                                 arr.push(pdflib.PDFName.of("XYZ"))
                                                 arr.push(pdflib.PDFNull)
                                                 arr.push(pdflib.PDFNull)
                                                 arr.push(pdflib.PDFNull)
                                                 map.set(pdflib.PDFName.of("Dest"), arr)
+                                            } else {
+                                                console.warn(`[WARN] Skipping outline for "${chapter.headline}" due to invalid page index: ${pageNo}`);
+                                            }
+                                            // --- FIX END ---
 
-
-                                                for(let page of chapter.pages) {
-                                                    pageMapping[page.name] = page["pageNo"]
+                                            for(let page of chapter.pages) {
+                                                // --- FIX: Add boundary check for page sections/annotations ---
+                                                const currentPageNo = page["pageNo"];
+                                                if (currentPageNo >= 0 && currentPageNo < totalPages) {
+                                                    pageMapping[page.name] = currentPageNo;
                                                     if(page.sections && page.sections.length > 0) {
-                                                        let origin = doc.getPage(page["pageNo"])
+                                                        let origin = doc.getPage(currentPageNo)
                                                         //let refs = []
-                                                        if(!pagesAnnotations[page["pageNo"]]) pagesAnnotations[page["pageNo"]] = []
+                                                        if(!pagesAnnotations[currentPageNo]) pagesAnnotations[currentPageNo] = []
                                                         for(let section of page.sections) {
                                                             if(!section.assets || section.assets.length == 0) continue
                                                             for(let asset of section.assets) {
                                                                 let realasset = uma.assets.find(a => a.id == asset.id)
-                                                                if(realasset.type == "PAGE" && realasset.link || realasset.type == "ASSET_REFERENCE") pagesAnnotations[page["pageNo"]].push(
+                                                                if(realasset.type == "PAGE" && realasset.link || realasset.type == "ASSET_REFERENCE") pagesAnnotations[currentPageNo].push(
                                                                     {
                                                                         Rect: [
                                                                             section.xPosition * origin.getWidth(),
@@ -211,23 +222,27 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                                             }
                                                         }
                                                     }
+                                                } else {
+                                                    console.warn(`[WARN] Skipping annotations for page "${page.name}" due to invalid page index: ${currentPageNo}`);
                                                 }
+                                                // --- FIX END ---
                                             }
-                                            if(chapter.chapters && chapter.chapters.length > 0) {
-                                                let chaptersDicts = chapter.chapters.map((c) => addOutlineChapter(c))
-                                                chaptersDicts.forEach((chapterDict, idx) => {
-                                                    if(idx > 0) chapterDict.set(pdflib.PDFName.of("Prev"), doc.context.getObjectRef(chaptersDicts[idx - 1]))
-                                                    if(idx < chaptersDicts.length - 1) chapterDict.set(pdflib.PDFName.of("Next"), doc.context.getObjectRef(chaptersDicts[idx + 1]))
-                                                    chapterDict.set(pdflib.PDFName.of("Parent"), ref)
-                                                })
-                                                map.set(pdflib.PDFName.of("First"), doc.context.getObjectRef(chaptersDicts[0]))
-                                                map.set(pdflib.PDFName.of("Last"), doc.context.getObjectRef(chaptersDicts[chaptersDicts.length - 1]))
-                                                map.set(pdflib.PDFName.of("Count"), pdflib.PDFNumber.of(chaptersDicts.length))
-                                            }
-                                            let dict = pdflib.PDFDict.fromMapWithContext(map, doc.context)
-                                            doc.context.assign(ref, dict)
-                                            return dict
                                         }
+                                        if(chapter.chapters && chapter.chapters.length > 0) {
+                                            let chaptersDicts = chapter.chapters.map((c) => addOutlineChapter(c))
+                                            chaptersDicts.forEach((chapterDict, idx) => {
+                                                if(idx > 0) chapterDict.set(pdflib.PDFName.of("Prev"), doc.context.getObjectRef(chaptersDicts[idx - 1]))
+                                                if(idx < chaptersDicts.length - 1) chapterDict.set(pdflib.PDFName.of("Next"), doc.context.getObjectRef(chaptersDicts[idx + 1]))
+                                                chapterDict.set(pdflib.PDFName.of("Parent"), ref)
+                                            })
+                                            map.set(pdflib.PDFName.of("First"), doc.context.getObjectRef(chaptersDicts[0]))
+                                            map.set(pdflib.PDFName.of("Last"), doc.context.getObjectRef(chaptersDicts[chaptersDicts.length - 1]))
+                                            map.set(pdflib.PDFName.of("Count"), pdflib.PDFNumber.of(chaptersDicts.length))
+                                        }
+                                        let dict = pdflib.PDFDict.fromMapWithContext(map, doc.context)
+                                        doc.context.assign(ref, dict)
+                                        return dict
+                                    }
 
                                         let outline = addOutlineChapter(uma.location, true)
                                         doc.catalog.set(pdflib.PDFName.of("Outlines"), doc.context.getObjectRef(outline))
@@ -601,7 +616,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                         }).then(res => {
                             var parsed = HTMLParser.parse(res.data);
                             var jsfiles = parsed.querySelectorAll("script").map(i => i.getAttribute("src")).filter(i => i != null);
-                            
+
                             axiosInstance({
                                 method: 'get',
                                 url: jsfiles.filter(i => i.match(/https:\/\/mein.cornelsen.de\/main\..*\.js/))[0]
