@@ -196,16 +196,37 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                                             if(!section.assets || section.assets.length == 0) continue
                                                             for(let asset of section.assets) {
                                                                 let realasset = uma.assets.find(a => a.id == asset.id)
-                                                                if(realasset.type == "PAGE" && realasset.link || realasset.type == "ASSET_REFERENCE") pagesAnnotations[page["pageNo"]].push(
+                                                                if(!realasset) continue
+
+                                                                let pageLink = null
+                                                                let urlLink = null
+                                                                if(realasset.type == "PAGE" && realasset.link) {
+                                                                    pageLink = realasset.link
+                                                                } else if(realasset.type == "ASSET_REFERENCE") {
+                                                                    urlLink = realasset.threeQUrl || realasset.link || realasset.url || null
+                                                                } else if(realasset.type == "LINK" && realasset.link) {
+                                                                    if(/^https?:\/\//i.test(realasset.link)) {
+                                                                        urlLink = realasset.link
+                                                                    } else {
+                                                                        pageLink = realasset.link
+                                                                    }
+                                                                }
+                                                                if(!pageLink && !urlLink) continue
+
+                                                                let x0 = section.xPosition * origin.getWidth()
+                                                                let y0 = (1-section.yPosition) * origin.getHeight()
+                                                                let x1 = (section.xPosition + section.width) * origin.getWidth()
+                                                                let y1 = (1-(section.yPosition + section.height)) * origin.getHeight()
+                                                                pagesAnnotations[page["pageNo"]].push(
                                                                     {
                                                                         Rect: [
-                                                                            section.xPosition * origin.getWidth(),
-                                                                            (1-section.yPosition) * origin.getHeight(),
-                                                                            (section.xPosition + section.width) * origin.getWidth(),
-                                                                            (1-(section.yPosition + section.height)) * origin.getHeight()
+                                                                            Math.min(x0, x1),
+                                                                            Math.min(y0, y1),
+                                                                            Math.max(x0, x1),
+                                                                            Math.max(y0, y1)
                                                                         ],
-                                                                        ...realasset.type == "PAGE" ? {page: realasset.link} : {},
-                                                                        ...realasset.type == "ASSET_REFERENCE" ? {url: realasset.threeQUrl || realasset.link} : {},
+                                                                        ...pageLink ? {page: pageLink} : {},
+                                                                        ...urlLink ? {url: urlLink} : {},
                                                                     }
                                                                 )
                                                             }
@@ -232,19 +253,30 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                         let outline = addOutlineChapter(uma.location, true)
                                         doc.catalog.set(pdflib.PDFName.of("Outlines"), doc.context.getObjectRef(outline))
 
+                                        function resolveLinkedPageIndex(pageRef) {
+                                            if(pageRef === undefined || pageRef === null) return null
+                                            if(pageMapping[pageRef] !== undefined) return pageMapping[pageRef]
+                                            let numericPageRef = Number(pageRef)
+                                            if(Number.isInteger(numericPageRef) && numericPageRef >= 0 && numericPageRef < doc.getPageCount()) return numericPageRef
+                                            return null
+                                        }
+
                                         Object.entries(pagesAnnotations).forEach(([pageNo, annotations]) => {
-                                            doc.getPage(parseInt(pageNo)).node.set(pdflib.PDFName.of("Annots"), doc.context.obj(
-                                                annotations.map(anno => doc.context.obj({
+                                            let annotationObjects = annotations.map(anno => {
+                                                let linkedPageIndex = resolveLinkedPageIndex(anno.page)
+                                                if(!anno.url && linkedPageIndex === null) return null
+                                                return doc.context.obj({
                                                     Type: "Annot",
                                                     Subtype: "Link",
                                                     Rect: anno.Rect,
-                                                    ...anno.page ? {Dest: [doc.getPage(pageMapping[anno.page]).ref, "XYZ", null, null, null]} : {},
+                                                    ...linkedPageIndex !== null ? {Dest: [doc.getPage(linkedPageIndex).ref, "XYZ", null, null, null]} : {},
                                                     ...anno.url ? {A: {
                                                         S: "URI",
                                                         URI: pdflib.PDFString.of(anno.url)
                                                     }} : {},
-                                                }))
-                                            ))
+                                                })
+                                            }).filter(Boolean)
+                                            if(annotationObjects.length > 0) doc.getPage(parseInt(pageNo)).node.set(pdflib.PDFName.of("Annots"), doc.context.obj(annotationObjects))
                                         })
 
                                         fs.writeFileSync("./out/" + ebook.fileName, await doc.save())
@@ -578,16 +610,43 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                 url: 'https://www.cornelsen.de/shop/ccustomer/oauth/login/?afterAuthUrl=https%3A%2F%2Fwww.cornelsen.de%2F',
             }).then(res => {
                 var parsed = HTMLParser.parse(res.data);
+                var loginForm = parsed.querySelector("#loginForm") || parsed.querySelector("form");
+                if (!loginForm) {
+                    console.log("Could not find login form - 752.5")
+                    return;
+                }
                 var loginFormData = {};
-                parsed.querySelector("#loginForm").querySelectorAll("input").forEach(i => {
-                    loginFormData[i.getAttribute("name")] = i.getAttribute("value") || "";
+                var loginInputs = loginForm.querySelectorAll("input");
+                loginInputs.forEach(i => {
+                    var inputName = i.getAttribute("name");
+                    if (!inputName) return;
+                    loginFormData[inputName] = i.getAttribute("value") || "";
                 })
-                loginFormData["loginForm:username"] = email;
-                loginFormData["loginForm:password"] = passwd;
+                var usernameField = loginInputs.find(i => {
+                    var inputName = (i.getAttribute("name") || "").toLowerCase();
+                    var inputType = (i.getAttribute("type") || "").toLowerCase();
+                    return inputName.includes("username") || inputName.includes("email") || inputType === "email";
+                })?.getAttribute("name");
+                var passwordField = loginInputs.find(i => {
+                    var inputName = (i.getAttribute("name") || "").toLowerCase();
+                    var inputType = (i.getAttribute("type") || "").toLowerCase();
+                    return inputName.includes("password") || inputType === "password";
+                })?.getAttribute("name");
+                if (!usernameField || !passwordField) {
+                    console.log("Could not find login fields - 752.6")
+                    return;
+                }
+                loginFormData[usernameField] = email;
+                loginFormData[passwordField] = passwd;
+                var loginAction = loginForm.getAttribute("action") || "/oxauth/login.htm";
+                var loginUrl = new URL(loginAction, res.request?.res?.responseUrl || "https://id.cornelsen.de/").toString();
 
                 axiosInstance({
                     method: 'post',
-                    url: 'https://id.cornelsen.de/oxauth/login.htm',
+                    url: loginUrl,
+                    headers: {
+                        "content-type": "application/x-www-form-urlencoded",
+                    },
                     data: qs.stringify(loginFormData)
                 }).then(res => {
                     console.log("Logged in successfully")
@@ -611,7 +670,9 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                     url: `https://mein.cornelsen.de/766.${res.data.match(/766\s*:\s*"(\w*)"\s*,/)[1]}.js`
                                 }).then(res => {
                                     var clientId = res.data.match(/authority\s*:\s*"https:\/\/id.cornelsen.de\/"\s*,\s*clientId\s*:\s*"(.*?)"/m)[1];*/
-                                    var clientId = "@!38C4.659F.8000.3A79!0001!7F12.03E3!0008!E3BA.CEBF.4551.8EBD" //from windows desktop app
+                                    var clientId = "@!38C4.659F.8000.3A79!0001!7F12.03E3!0008!EC22.422D.7E51.7DE3" //from current mein.cornelsen.de web app
+                                    var redirectUri = "https://mein.cornelsen.de"
+                                    var oidcScope = "openid user_name roles cv_sap_kdnr cv_schule profile email meta inum tenant_id"
                                     //console.log("Got client id: " + clientId)
                                     var code_verifier = crypto.randomBytes(48).toString('hex');
                                     var nonce = crypto.randomBytes(16).toString('hex')
@@ -619,10 +680,10 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                         method: "get",
                                         url: "https://id.cornelsen.de/oxauth/restv1/authorize",
                                         params: {
-                                            scope: "openid user_name roles cv_sap_kdnr cv_schule profile email meta inum",
+                                            scope: oidcScope,
                                             response_type: "code",
                                             response_mode: "query",
-                                            redirect_uri: "https://unterrichtsmanager.cornelsen.de/index.html",
+                                            redirect_uri: redirectUri,
                                             client_id: clientId,
                                             state: crypto.randomBytes(16).toString('hex'),
                                             code_challenge: crypto.createHash('sha256').update(code_verifier).digest().toString('base64url'),
@@ -634,8 +695,10 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                             return status >= 200 && status < 303;
                                         }
                                     }).then(res => {
-                                        // console.log(res.headers.location)
-                                        var code = res.headers.location.match(/code=(.*?)&/)[1];
+                                        var location = res.headers.location || "";
+                                        var codeMatch = location.match(/[?&]code=([^&]+)/);
+                                        if (!codeMatch) throw new Error("Authorization redirect did not include code. Location: " + location);
+                                        var code = decodeURIComponent(codeMatch[1]);
                                         // console.log("Got code: " + code)
                                         axiosInstance({
                                             method: 'post',
@@ -645,8 +708,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                             },
                                             data: qs.stringify({
                                                 grant_type: "authorization_code",
-                                                //redirect_uri: "https://mein.cornelsen.de",
-                                                redirect_uri: "https://unterrichtsmanager.cornelsen.de/index.html",
+                                                redirect_uri: redirectUri,
                                                 code: code,
                                                 code_verifier: code_verifier,
                                                 client_id: clientId,
