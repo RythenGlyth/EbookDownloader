@@ -38,6 +38,7 @@ const klett = require('./downloader/klett')
 const westermann = require('./downloader/westermann')
 const scook = require('./downloader/scook')
 const cornelsench = require('./downloader/cornelsench')
+const helbling = require('./downloader/helbling')
 
 prompts([
     {
@@ -84,6 +85,10 @@ prompts([
             {
                 title: "kiosquemag.com",
                 value: "kiosquemag"
+            },
+            {
+                title: 'Helbling Media App',
+                value: 'helbling'
             }
         ]
     },
@@ -140,5 +145,9 @@ prompts([
             break;
         case 'book2look':
             book2look(inputs.deleteAllOldTempImages)
+            break;
+        case 'helbling':
+            helbling(inputs.email, inputs.passwd, inputs.deleteAllOldTempImages)
+            break;
     }
 })
