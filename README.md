@@ -25,6 +25,7 @@ A tool to download purchased e-books from different publishers.
 | C.C.BUCHNER | click-and-teach.de | Image (1658px x 2211px) composition | &check; | &cross; | |
 | Book2Look | book2look.com | Lossless PDF | &check; | ? | [2] |
 | kiosquemag | kiosquemag.com | Image (?) composition | &cross; | &cross; | |
+| Helbling Media App | helbling.com | Lossless PDF | &check; | &cross; | |
 
 [1]: Website allows to download files that are not owned
 
@@ -79,7 +80,7 @@ You can save your credentials in a `config.json` file to avoid entering them eve
 }
 ```
 
-Replace all the square brackets with your data. Publisher keys are: `cornelsen`, `klett`, `allango`, `scook`, `westermann`, `clicknstudy`, `clicknteach`, `kiosquemag`, `cornelsench`, `book2look` 
+Replace all the square brackets with your data. Publisher keys are: `cornelsen`, `klett`, `allango`, `scook`, `westermann`, `clicknstudy`, `clicknteach`, `kiosquemag`, `cornelsench`, `book2look`, `helbling`
 
 ## Bildungslogin
 

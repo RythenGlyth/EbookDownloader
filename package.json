@@ -32,6 +32,6 @@
     "build": "pkg --output build/ ."
   },
   "author": "RythenGlyth",
-  "license": "ISC",
+  "license": "MIT",
   "description": ""
 }

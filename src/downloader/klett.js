@@ -19,7 +19,6 @@ var parseString = require('xml2js').parseString;
 const { stdin, stdout } = require('process');
 const { resolve } = require('path');
 const path = require('path');
-const { url } = require('inspector');
 const transformationMatrix = require('transformation-matrix')
 
 const AdmZip  = require('adm-zip')
@@ -467,32 +466,79 @@ async function klett(email, passwd, deleteAllOldTempImages) {
         getByBridgeURL(email, "Klett TokenDL " + email.split("/").slice(-2)[0]);
         return;
     }
+    // Step 1: Visit www.klett.de/login to get the correct Keycloak auth URL with state
     axios({
-        url: "https://schueler.klett.de/arbeitsplatz/",
+        url: "https://www.klett.de/login",
         method: "get",
         jar: cookieJar,
         withCredentials: true,
+        maxRedirects: 0, // Capture the redirect URL
+        validateStatus: (status) => status >= 200 && status < 400,
     }).then(res => {
-        var loginForm = HTMLParser.parse(res.data).querySelector("#kc-form-login").attributes;
+        const keycloakAuthUrl = res.headers.location;
+        if (!keycloakAuthUrl) {
+            console.log("Error: Could not get Keycloak auth URL from www.klett.de/login");
+            return;
+        }
+
+        // Step 2: Request Keycloak auth page to get login form
         axios({
-            url: loginForm.action,
-            method: loginForm.method,
+            url: keycloakAuthUrl,
+            method: "get",
             jar: cookieJar,
             withCredentials: true,
-            data: qs.stringify({
-                username: email,
-                password: passwd,
-                renemberMe: "on"
-            }),
-            headers: {
-                'content-type': "application/x-www-form-urlencoded"
-            }
         }).then(res => {
+            var loginFormElement = HTMLParser.parse(res.data).querySelector("#kc-form-login");
+            if (!loginFormElement) {
+                console.log("Error: Could not find login form. The page structure may have changed.");
+                return;
+            }
+            var loginFormAction = loginFormElement.getAttribute("action");
+            if (!loginFormAction) {
+                console.log("Error: Could not find login form action URL.");
+                return;
+            }
+            // Decode HTML entities in the action URL
+            loginFormAction = loginFormAction.replace(/&amp;/g, "&");
+
+            // Step 3: Submit credentials to Keycloak
             axios({
-                url: "https://www.klett.de/drm/api/1.0/private/license/usage?size=50&page=1&valid=true",
+                url: loginFormAction,
+                method: "post",
                 jar: cookieJar,
                 withCredentials: true,
-            }).then(async res => {
+                maxRedirects: 0, // Don't auto-follow redirects
+                validateStatus: (status) => status >= 200 && status < 400,
+                data: qs.stringify({
+                    username: email,
+                    password: passwd,
+                    rememberMe: "on"
+                }),
+                headers: {
+                    'content-type': "application/x-www-form-urlencoded"
+                }
+            }).then(res => {
+                // Step 4: Follow the redirect to complete OAuth flow back to www.klett.de
+                const redirectUrl = res.headers.location;
+                if (!redirectUrl) {
+                    console.log("Error: Login failed - no redirect. Check your credentials.");
+                    return;
+                }
+
+                // Visit the redirect URL (www.klett.de/user/keycloak/connect?...) to establish session
+                axios({
+                    url: redirectUrl,
+                    method: "get",
+                    jar: cookieJar,
+                    withCredentials: true,
+                    maxRedirects: 10,
+                }).then(res => {
+                    // Step 5: Now fetch the license API
+                    axios({
+                        url: "https://www.klett.de/drm/api/1.0/private/license/usage?size=50&page=1&valid=true",
+                        jar: cookieJar,
+                        withCredentials: true,
+                    }).then(async res => {
                 var choices = [];
                 for (let l of res.data?.items) {
                     choices.push(await new Promise((resolve, rej) => {
@@ -523,12 +569,21 @@ async function klett(email, passwd, deleteAllOldTempImages) {
                 console.log(err);
                 console.log("Error fetching books")
             });
+            }).catch(err => {
+                console.log(err);
+                console.log("Error completing OAuth redirect")
+            });
         }).catch(err => {
+            console.log(err);
             console.log("Error while login")
+        });
+        }).catch(err => {
+            console.log(err);
+            console.log("Error fetching loginForm")
         });
     }).catch(err => {
         console.log(err);
-        console.log("Error fetching loginForm")
+        console.log("Error getting login URL from www.klett.de")
     });
 }
 module.exports = klett;
