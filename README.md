@@ -1,3 +1,35 @@
+
+<div align="right">
+  <details>
+    <summary >🌐 Language</summary>
+    <div>
+      <div align="center">
+        <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=en">English</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=zh-CN">简体中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=zh-TW">繁體中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=ja">日本語</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=ko">한국어</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=hi">हिन्दी</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=th">ไทย</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=fr">Français</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=de">Deutsch</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=es">Español</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=it">Italiano</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=ru">Русский</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=pt">Português</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=nl">Nederlands</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=pl">Polski</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=ar">العربية</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=fa">فارسی</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=tr">Türkçe</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=vi">Tiếng Việt</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=id">Bahasa Indonesia</a>
+        | <a href="https://openaitx.github.io/view.html?user=RythenGlyth&project=EbookDownloader&lang=as">অসমীয়া</
+      </div>
+    </div>
+  </details>
+</div>
+
 # EbookDownloader
 A tool to download purchased e-books from different publishers.
 
