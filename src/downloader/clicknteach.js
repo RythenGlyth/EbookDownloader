@@ -10,8 +10,8 @@ const prompts = require('prompts');
 const https = require('https')
 const crypto = require('crypto')
 var spawn = require('child_process').spawn
-var Iconv = require('iconv').Iconv;
-const sizeOf = require('image-size')
+var Iconv = require('../lib/iconv').Iconv;
+const sizeOf = require('image-size').imageSize
 const pdflib = require("pdf-lib")
 
 var HTMLParser = require('node-html-parser');
@@ -190,7 +190,7 @@ function clicknteach(email, passwd, deleteAllOldTempImages) {
             dir.sort().forEach((file, idx) => {
                 doc.addPage();
                 doc.rect(0, 0, size[0], size[1]).fill("#000000");
-                var thissize = sizeOf(folder + file);
+                var thissize = sizeOf(fs.readFileSync(folder + file));
                 var thissizefitted = {
                     width: Math.min(size[0] / thissize.width, size[1] / thissize.height) * thissize.width,
                     height: Math.min(size[0] / thissize.width, size[1] / thissize.height) * thissize.height

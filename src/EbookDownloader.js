@@ -10,8 +10,8 @@ const prompts = require('prompts');
 const https = require('https')
 const crypto = require('crypto')
 var spawn = require('child_process').spawn
-var Iconv = require('iconv').Iconv;
-const sizeOf = require('image-size')
+var Iconv = require('./lib/iconv').Iconv;
+const sizeOf = require('image-size').imageSize
 const pdflib = require("pdf-lib")
 
 var HTMLParser = require('node-html-parser');

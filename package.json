@@ -2,18 +2,20 @@
   "dependencies": {
     "adm-zip": "^0.5.10",
     "axios": "^1.7.5",
-    "axios-cookiejar-support": "^5.0.2",
+    "axios-cookiejar-support": "^7.0.0",
     "ebookdownloader": "file:",
-    "iconv": "^3.0.1",
-    "image-size": "^1.0.2",
-    "node-html-parser": "^2.1.0",
+    "iconv-lite": "^0.7.2",
+    "image-size": "^2.0.2",
+    "node-html-parser": "^7.1.0",
     "pdf-lib": "^1.17.1",
-    "pdfkit": "^0.11.0",
+    "pdfkit": "^0.18.0",
     "prompts": "^2.4.0",
-    "querystring": "^0.2.0",
-    "tough-cookie": "^4.1.4",
-    "transformation-matrix": "^2.13.0",
+    "tough-cookie": "^6.0.1",
+    "transformation-matrix": "^3.1.0",
     "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.20.0"
   },
   "bin": "EbookDownloader.js",
   "pkg": {
@@ -21,7 +23,9 @@
       "node_modules/**/*"
     ],
     "targets": [
-      "node14-win-x64"
+      "node20-win-x64",
+      "node22-win-x64",
+      "node24-win-x64"
     ]
   },
   "name": "ebookdownloader",
