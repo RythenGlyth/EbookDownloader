@@ -65,7 +65,7 @@ function westermann(email, passwd, deleteAllOldTempImages) {
 
 
             axiosInstance({
-                url: `${environment.backendUrl}/api/sync/${bookID}?materialtypes[]=default&materialtypes[]=addon`,
+                url: `${environment.backendUrl}/v1/api/sync/${bookID}?materialtypes[]=default&materialtypes[]=addon`,
                 method: "get",
             }).then(async res => {
 
@@ -255,14 +255,43 @@ function westermann(email, passwd, deleteAllOldTempImages) {
         axiosInstance({
             url: new URL(root.querySelectorAll("script").filter(l => l.getAttribute("src")?.startsWith("main"))[0].getAttribute("src"), "https://bibox2.westermann.de/").href,
             method: "GET"
-        }).then(res => {
+        }).then(async res => {
             /**
              * @type {{production: boolean, dataPrivacyUrl: string, backendUrl: string, backendLogin: boolean, frontendUrl: string, frontendUrlIOS: string, accountAdminUrl: string, changePasswordUrl: string, zsv: { live: boolean, url: string, }, sentry: { enabled: boolean, dsn: string, }, matomoUrl: string, matomoSiteId: number, maxUploadFileSize: {        forTeacher: number, forUser: number, }, pingTimer: number, oauth: { loginURL: string, logoutURL: string, postLogoutRedirect: string, redirectURL: string, clientID: string, protocol: string, }}}
-            }}
             */
             var mainjs = res.data;
-            var p = mainjs.match(/backendUrl\w*:\w*/).index;
-            var environment = expandToNearestJSONObject(mainjs, p)
+            var mainJsUrl = new URL(root.querySelectorAll("script").filter(l => l.getAttribute("src")?.startsWith("main"))[0].getAttribute("src"), "https://bibox2.westermann.de/");
+
+            function findEnvironment(source) {
+                var p = source.search(/backendUrl\s*:\s*"/);
+                if (p === -1) return null;
+                try {
+                    return expandToNearestJSONObject(source, p);
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            var environment = findEnvironment(mainjs);
+
+            if (!environment) {
+                var chunkFiles = [...mainjs.matchAll(/import(?:{[^}]*})?\s*(?:from)?\s*"\.\/(chunk-[A-Za-z0-9]+\.js)"/g)].map(m => m[1]);
+                for (const chunkFile of chunkFiles) {
+                    try {
+                        const chunkRes = await axiosInstance({
+                            url: new URL(chunkFile, mainJsUrl.href).href,
+                            method: "GET"
+                        });
+                        environment = findEnvironment(chunkRes.data);
+                        if (environment) break;
+                    } catch (e) { }
+                }
+            }
+
+            if (!environment) {
+                console.log(`Could not extract environment - 400`)
+                return;
+            }
             /*var p0 = p;
             for(var braces = 0; braces != -1; p0--) {
                 if(mainjs[p0] == "}") braces++;
@@ -291,21 +320,34 @@ function westermann(email, passwd, deleteAllOldTempImages) {
                 method: "GET",
             }).then(res => {
                 var parsedHTML = HTMLParser.parse(res.data);
-                var form = parsedHTML.querySelector("form");
+                var form = parsedHTML.querySelector("form#form_login") || parsedHTML.querySelector("form");
+                var loginUrl = form.getAttribute("action");
+                if (!/^https?:\/\//.test(loginUrl)) loginUrl = "https://mein.westermann.de" + loginUrl;
+                var token = form.querySelector("input[name=_token]")?.getAttribute("value") || "";
                 axiosInstance({
-                    url: "https://mein.westermann.de" + form.getAttribute("action"),
+                    url: loginUrl,
                     method: "post",
                     data: qs.stringify({
                         "account": email,
                         "password": passwd,
                         "remember": 0,
                         "action": "login",
+                        "_token": token,
                     }),
                     headers: {
                         "Content-Type": "application/x-www-form-urlencoded",
                     },
                 }).then(res => {
-                    var fwLoginUrl = new URL(res.data.match(/window.location = "(.*)";/)[1].replaceAll(/\\\//g, "\/"));
+                    var redirectMatch = res.data.match(/window\.location(?:\.href)?\s*=\s*["']([^"']*)["']/);
+                    var fwLoginUrl;
+                    if (redirectMatch) {
+                        fwLoginUrl = new URL(redirectMatch[1].replaceAll(/\\\//g, "\/"));
+                    } else if (res.request?.res?.responseUrl) {
+                        fwLoginUrl = new URL(res.request.res.responseUrl);
+                    } else {
+                        console.log(`Could not login - 404`)
+                        return;
+                    }
                     var code = fwLoginUrl.searchParams.get("code");
                     if (state == fwLoginUrl.searchParams.get("state")) {
                         axiosInstance({
