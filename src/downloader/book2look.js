@@ -72,7 +72,7 @@ function book2look(deleteAllOldTempImages) {
                                     const randomStr = Array(8).fill(0).map(() => Math.floor(Math.random() * 10)).join("");
                                     axios(`https://bibletapi.book2look.com/api/Biblet/showbox?&AId=${euid}${String.fromCharCode(97 + Math.floor(Math.random() * 26))}${randomStr}`).then(async (res) => {
                                         const encryptedKey = res.data;
-                                        crypto.pbkdf2(randomStr, ps, 1000, 16, 'sha1', (err, key) => {
+                                        crypto.pbkdf2(randomStr, ps, 100000, 16, 'sha256', (err, key) => {
                                             if(err) {
                                                 console.log(err)
                                                 console.log("book2look decryption failed - e408")
