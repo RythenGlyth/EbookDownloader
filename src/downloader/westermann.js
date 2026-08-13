@@ -163,7 +163,6 @@ function westermann(email, passwd, deleteAllOldTempImages) {
 
                 var meta = {
                     Title: book.title,
-                    Author: book.publisher,
                     Subject: book.subtitle,
                     Keywords: book.isbn,
                 };
