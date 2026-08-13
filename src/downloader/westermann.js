@@ -161,6 +161,15 @@ function westermann(email, passwd, deleteAllOldTempImages) {
 
                 console.log("Merging into PDF");
 
+                var meta = {
+                    Title: book.title,
+                    Subject: book.subtitle,
+                    Keywords: book.isbn,
+                };
+                Object.keys(meta).forEach(key => {
+                    if (meta[key] == null) delete meta[key];
+                });
+
                 var doc = new PDFDoc({
                     margins: {
                         top: 0,
@@ -171,6 +180,7 @@ function westermann(email, passwd, deleteAllOldTempImages) {
                     autoFirstPage: false,
                     size,
                     bufferPages: true,
+                    info: meta,
                 });
                 doc.pipe(fs.createWriteStream("./out/" + name + ".pdf"))
                 doc.font('./unifont-15.0.01.ttf')
@@ -232,6 +242,37 @@ function westermann(email, passwd, deleteAllOldTempImages) {
                     }
                     console.log(`\x1b[1A\x1b[2K\x1b[1GMerging into PDF (${idx}/${dir.length})`);
                 });
+
+                if (bookData.chapters && bookData.chapters.length > 0) {
+                    console.log("Adding table of contents");
+                    var pageIndexByName = {};
+                    bookData.pages.forEach((page, idx) => {
+                        if (pageIndexByName[page.name] == null) pageIndexByName[page.name] = idx;
+                    });
+                    function getPageIndex(pagenum) {
+                        if (pagenum == null || pagenum === "") return null;
+                        var name = String(pagenum);
+                        if (pageIndexByName[name] != null) return pageIndexByName[name];
+                        var num = parseInt(name, 10);
+                        if (Number.isInteger(num)) {
+                            for (var i = 0; i < bookData.pages.length; i++) {
+                                if (bookData.pages[i].internalPagenum >= num) return i;
+                            }
+                        }
+                        return null;
+                    }
+                    function addOutline(parent, chapters) {
+                        chapters.filter(chapter => chapter.title).forEach(chapter => {
+                            var pageIndex = getPageIndex(chapter.pagenumStart);
+                            if (pageIndex != null && pageIndex >= dir.length) pageIndex = dir.length - 1;
+                            var item = parent.addItem(chapter.title, { pageNumber: pageIndex, fit: true });
+                            if (chapter.children && chapter.children.length > 0) {
+                                addOutline(item, chapter.children);
+                            }
+                        });
+                    }
+                    addOutline(doc.outline, bookData.chapters);
+                }
                 doc.end();
                 console.log("Wrote ./out/" + name + ".pdf")
 
