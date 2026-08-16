@@ -271,32 +271,28 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
                 }
             })
 
-            if (chapterRoots.length > 0) {
+            if (chapterRoots.length > 0 && dir.length > 0) {
                 console.log("Adding table of contents");
-                var pageIndexByName = {};
-                for (var i = 0; i <= bookData.endPage - bookData.startPage; i++) {
-                    var label = i + bookData.startPage - bookData.pageOffset;
-                    if (label <= 0) label = pageOffsetLabelsRev[i + bookData.startPage];
-                    if (pageIndexByName[label] == null) pageIndexByName[label] = i;
-                }
                 function getPageIndex(pagenum) {
                     if (pagenum == null || pagenum === "") return null;
-                    var name = String(pagenum);
-                    if (pageIndexByName[name] != null) return pageIndexByName[name];
-                    var num = parseInt(name, 10);
-                    if (Number.isInteger(num)) {
-                        for (var i = 0; i <= bookData.endPage - bookData.startPage; i++) {
-                            var label = i + bookData.startPage - bookData.pageOffset;
-                            if (label <= 0) label = pageOffsetLabelsRev[i + bookData.startPage];
-                            if (parseInt(label, 10) >= num) return i;
-                        }
+                    var num = parseInt(pagenum, 10);
+                    if (!Number.isInteger(num)) return null;
+                    var viewerIndex = num - bookData.pageOffset;
+                    if (bookData.pageOffsetLabels[viewerIndex] != null) {
+                        viewerIndex = bookData.pageOffsetLabels[viewerIndex];
+                    } else {
+                        viewerIndex += bookData.pageOffset;
                     }
-                    return null;
+                    viewerIndex -= bookData.startPage;
+                    return Number.isInteger(viewerIndex) ? viewerIndex : null;
                 }
                 function addOutline(parent, chapters) {
-                    chapters.filter(chapter => chapter.title).forEach(chapter => {
+                    chapters.forEach(chapter => {
+                        if (!chapter.title) return;
                         var pageIndex = getPageIndex(chapter.page);
-                        if (pageIndex == null || pageIndex >= dir.length) pageIndex = dir.length - 1;
+                        if (pageIndex == null) return;
+                        if (pageIndex < 0) pageIndex = 0;
+                        if (pageIndex >= dir.length) pageIndex = dir.length - 1;
                         var item = parent.addItem(chapter.title, { pageNumber: pageIndex, fit: true });
                         if (chapter.children && chapter.children.length > 0) {
                             addOutline(item, chapter.children);
