@@ -108,6 +108,32 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
 
             var pageOffsetLabelsRev = Object.entries(bookData.pageOffsetLabels).reduce((result, value) => ({ ...result, [value[1]]: value[0] }), {});
 
+            var chapterRoots = (function parseTableOfContents(html) {
+                var root = HTMLParser.parse(html);
+                var items = root.querySelectorAll("#panel-left .register li");
+                var byId = {};
+                items.forEach(li => {
+                    var pageLink = li.querySelector(".pageLink");
+                    var titleEl = pageLink ? pageLink.querySelector(".title") : null;
+                    byId[li.getAttribute("data-id")] = {
+                        title: titleEl ? titleEl.text.trim() : "",
+                        page: pageLink ? pageLink.getAttribute("data-page") : null,
+                        children: [],
+                    };
+                });
+                var roots = [];
+                items.forEach(li => {
+                    var node = byId[li.getAttribute("data-id")];
+                    var parent = li.getAttribute("data-parent");
+                    if (parent && parent !== "0" && byId[parent]) {
+                        byId[parent].children.push(node);
+                    } else {
+                        roots.push(node);
+                    }
+                });
+                return roots;
+            })(res.data);
+
             var name = bookData.bookName.replace(/[^a-za-z0-9 \(\)_\-,\.]/gi, '');
             var folder = ("./out/DownloadTemp/" + name + "/");
             if (deleteAllOldTempImages && fs.existsSync(folder)) fs.rmSync(folder, {
@@ -244,6 +270,41 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
                     doc.restore()
                 }
             })
+
+            if (chapterRoots.length > 0) {
+                console.log("Adding table of contents");
+                var pageIndexByName = {};
+                for (var i = 0; i <= bookData.endPage - bookData.startPage; i++) {
+                    var label = i + bookData.startPage - bookData.pageOffset;
+                    if (label <= 0) label = pageOffsetLabelsRev[i + bookData.startPage];
+                    if (pageIndexByName[label] == null) pageIndexByName[label] = i;
+                }
+                function getPageIndex(pagenum) {
+                    if (pagenum == null || pagenum === "") return null;
+                    var name = String(pagenum);
+                    if (pageIndexByName[name] != null) return pageIndexByName[name];
+                    var num = parseInt(name, 10);
+                    if (Number.isInteger(num)) {
+                        for (var i = 0; i <= bookData.endPage - bookData.startPage; i++) {
+                            var label = i + bookData.startPage - bookData.pageOffset;
+                            if (label <= 0) label = pageOffsetLabelsRev[i + bookData.startPage];
+                            if (parseInt(label, 10) >= num) return i;
+                        }
+                    }
+                    return null;
+                }
+                function addOutline(parent, chapters) {
+                    chapters.filter(chapter => chapter.title).forEach(chapter => {
+                        var pageIndex = getPageIndex(chapter.page);
+                        if (pageIndex == null || pageIndex >= dir.length) pageIndex = dir.length - 1;
+                        var item = parent.addItem(chapter.title, { pageNumber: pageIndex, fit: true });
+                        if (chapter.children && chapter.children.length > 0) {
+                            addOutline(item, chapter.children);
+                        }
+                    });
+                }
+                addOutline(doc.outline, chapterRoots);
+            }
 
             doc.end()
             console.log("Wrote ./out/" + name + ".pdf")
