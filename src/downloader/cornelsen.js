@@ -31,6 +31,7 @@ axiosCookieJarSupport(axios);
 
 function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
     console.log("Logging in and getting Book list")
+    const libraryApiUrl = 'https://api.lernen.cornelsen.de/v2/products/graphql';
     const cookieJar = new tough.CookieJar();
     const axiosInstance = axios.create({
         jar: cookieJar,
@@ -40,10 +41,29 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
         }
     });
+    function getTokenExpiration(token) {
+        try {
+            const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+            return typeof payload.exp === 'number' ? new Date(payload.exp * 1000) : null;
+        } catch (err) {
+            return null;
+        }
+    }
+    function logRequestError(err) {
+        const status = err.response?.status;
+        const authenticationError = err.response?.headers?.['www-authenticate'];
+        console.log(status ? `HTTP ${status}: ${err.response.statusText}` : err.message);
+        if (authenticationError) console.log(authenticationError);
+    }
     function get_using_id_token(id_token) {
+        const tokenExpiration = getTokenExpiration(id_token);
+        if (tokenExpiration && tokenExpiration <= new Date()) {
+            console.log(`Cornelsen token expired at ${tokenExpiration.toISOString()}. Please log in again or replace the token in config.json.`);
+            return;
+        }
         axiosInstance({
             method: 'post',
-            url: 'https://mein.cornelsen.de/bibliothek/api',
+            url: libraryApiUrl,
             headers: {
                 "authorization": "Bearer " + id_token,//cookieJar.toJSON().cookies.find(c => c.key == "cornelsen-jwt").value,
                 "content-type": "application/json",
@@ -52,7 +72,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
             },
             data: {
                 operationName: "licenses",
-                query: "query licenses {\n  licenses {\n    activeUntil\n    isExpired\n    isNew\n    coverUrl\n    canBeStarted\n    salesProduct {\n      id\n      url\n      heading\n      shortTitle\n      subheading\n      info\n      coverUrl\n      licenseModelId\n      fullVersionId\n      fullVersionUrl\n      __typename\n    }\n    usageProduct {\n      id\n      url\n      heading\n      shortTitle\n      subheading\n      info\n      coverUrl\n      usagePlatformId\n      __typename\n    }\n    __typename\n  }\n}\n",
+                query: "query licenses {\n  licenses {\n    activeUntil\n    isExpired\n    isNew\n    coverUrl\n    canBeStarted\n    salesProduct {\n      id\n      url\n      heading\n      shortTitle\n      subheading\n      info\n      coverUrl\n      licenseModelId\n      fullVersionId\n      fullVersionUrl\n      isDemo\n      __typename\n    }\n    usageProduct {\n      id\n      url\n      heading\n      shortTitle\n      subheading\n      info\n      coverUrl\n      usagePlatformId\n      __typename\n    }\n    __typename\n  }\n}\n",
                 variables: {}
             }
         }).then(res => {
@@ -71,7 +91,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                 var productId = values.license?.usageProduct?.id || values.license?.salesProduct?.id;
                 axiosInstance({
                     method: 'post',
-                    url: 'https://mein.cornelsen.de/bibliothek/api',
+                    url: libraryApiUrl,
                     headers: {
                         "authorization": "Bearer " + id_token, //cookieJar.toJSON().cookies.find(c => c.key == "cornelsen-jwt").value,
                         "content-type": "application/json",
@@ -108,19 +128,39 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                             if (deleteAllOldTempImages && fs.existsSync(tmpFolder)) fs.rmSync(tmpFolder, {
                                 recursive: true,
                             });
+                            console.log("Requesting lossless archive...")
                             axios({
                                 method: "get",
                                 url: "https://unterrichtsmanager.cornelsen.de/uma20/api/v2/umazip/" + productId,
+                                timeout: 60000,
                                 headers: {
                                     "authorization": "Bearer " + id_token,
                                 },
                             }).then(res => {
+                                if (!res.data?.url) throw new Error("Cornelsen did not return an archive URL.")
+                                console.log("Downloading lossless archive...")
+                                let lastReportedPercent = -10
+                                let lastReportedBytes = 0
                                 axios({
                                     method: "get",
                                     url: res.data.url,
-                                    responseType: "arraybuffer"
+                                    responseType: "arraybuffer",
+                                    maxContentLength: Infinity,
+                                    maxBodyLength: Infinity,
+                                    onDownloadProgress: progress => {
+                                        if (progress.total) {
+                                            const percent = Math.floor(progress.loaded / progress.total * 100)
+                                            if (percent >= lastReportedPercent + 10 || percent === 100) {
+                                                console.log(`Archive download: ${percent}%`)
+                                                lastReportedPercent = percent
+                                            }
+                                        } else if (progress.loaded - lastReportedBytes >= 25 * 1024 * 1024) {
+                                            console.log(`Archive download: ${Math.floor(progress.loaded / 1024 / 1024)} MiB`)
+                                            lastReportedBytes = progress.loaded
+                                        }
+                                    }
                                 }).then(async res => {
-                                    console.log("Extracting zip")
+                                    console.log(`Downloaded ${Math.floor(res.data.byteLength / 1024 / 1024)} MiB. Extracting zip...`)
                                     let zip = new AdmZip(res.data)
                                     zip.extractAllTo(tmpFolder, deleteAllOldTempImages)
                                     console.log("trying to open uma.json")
@@ -299,11 +339,11 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
                                     console.log("finished PDFs")
                                 }).catch(err => {
                                     console.log("Could not get zip - 7n1")
-                                    console.log(err)
+                                    logRequestError(err)
                                 })
                             }).catch(err => {
                                 console.log("Could not get zip - 7n0")
-                                console.log(err)
+                                logRequestError(err)
                             })
                         } else {
                             console.log("Loading possible qualities")
@@ -605,7 +645,7 @@ function cornelsen(email, passwd, deleteAllOldTempImages, lossless) {
             });
         }).catch(err => {
             console.log("Could not get library - 755")
-            console.log(err)
+            logRequestError(err)
         });
     }
     if(email === "token") {
