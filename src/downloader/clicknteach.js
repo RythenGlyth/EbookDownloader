@@ -13,6 +13,7 @@ var spawn = require('child_process').spawn
 var Iconv = require('../lib/iconv').Iconv;
 const sizeOf = require('image-size').imageSize
 const pdflib = require("pdf-lib")
+const SVGtoPDF = require('svg-to-pdfkit')
 
 var HTMLParser = require('node-html-parser');
 var parseString = require('xml2js').parseString;
@@ -107,6 +108,16 @@ function clicknteach(email, passwd, deleteAllOldTempImages) {
             var bookData = expandToNearestJSONObject(res.data, res.data.indexOf("new PDFBookPublic({") + 19)
 
             var pageOffsetLabelsRev = Object.entries(bookData.pageOffsetLabels).reduce((result, value) => ({ ...result, [value[1]]: value[0] }), {});
+            var pageElements = HTMLParser.parse(res.data).querySelectorAll("#panel-left [data-page]");
+            var maxFoundPage = 0;
+            pageElements.forEach(el => {
+                var page = parseInt(el.getAttribute("data-page"), 10);
+                if (!isNaN(page) && page > maxFoundPage) maxFoundPage = page;
+            });
+            if ((bookData.startPage === bookData.endPage && maxFoundPage > 0) || maxFoundPage > bookData.endPage) {
+                bookData.startPage = 1;
+                bookData.endPage = maxFoundPage;
+            }
 
             var name = bookData.bookName.replace(/[^a-za-z0-9 \(\)_\-,\.]/gi, '');
             var folder = ("./out/DownloadTemp/" + name + "/");
@@ -135,9 +146,40 @@ function clicknteach(email, passwd, deleteAllOldTempImages) {
                     axiosInstance({
                         method: 'get',
                         url: url,
-                        responseType: 'stream'
+                        responseType: 'arraybuffer',
+                        validateStatus: null
                     }).then(res => {
-                        const outputFile = `${folder}${zeroPad(i, 4)}-${pageLabel}.jpg`;
+                        if (res.status !== 200) {
+                            reject(new Error(`Unexpected status ${res.status} while downloading page ${i + bookData.startPage}`));
+                            return;
+                        }
+                        const responseBuffer = Buffer.from(res.data);
+                        const contentType = String(res.headers['content-type'] || '').toLowerCase();
+                        const preview = responseBuffer.subarray(0, 256).toString('utf8').toLowerCase();
+                        const isSvg = contentType.includes('svg') || preview.includes('<svg');
+                        const outputFile = `${folder}${zeroPad(i, 4)}-${pageLabel}.${isSvg ? 'svg' : 'jpg'}`;
+
+                        if (isSvg) {
+                            fs.writeFileSync(outputFile, responseBuffer);
+                            axiosInstance({
+                                method: 'post',
+                                url: getUrl(bookData.ajaxUrl),
+                                data: qs.stringify({
+                                    op: "loadPage",
+                                    page: i + bookData.startPage,
+                                    id: bookData.bookId,
+                                })
+                            }).then((res) => {
+                                pagesData[i] = res.data;
+                                resolve()
+                            }).catch(err => {
+                                console.error(err)
+                                console.log("error while loading page " + i + " -e505")
+                                reject()
+                            })
+                            return;
+                        }
+
                         const ffmpegProcess = spawn("ffmpeg", ["-i", "-", "-f", "image2", "-vcodec", "mjpeg", "-"]);
                         const outputStream = fs.createWriteStream(outputFile);
                         let ffmpegError = "";
@@ -146,7 +188,7 @@ function clicknteach(email, passwd, deleteAllOldTempImages) {
                             ffmpegError += data.toString();
                         });
                         ffmpegProcess.stdout.pipe(outputStream);
-                        res.data.pipe(ffmpegProcess.stdin);
+                        ffmpegProcess.stdin.end(responseBuffer);
 
                         ffmpegProcess.stdin.on("error", () => {});
 
@@ -201,7 +243,8 @@ function clicknteach(email, passwd, deleteAllOldTempImages) {
 
             console.log("downloaded all pages")
 
-            var size = [pagesData[0].width, pagesData[0].height]
+            var firstValidPageData = pagesData.find(pageData => pageData && pageData.width && pageData.height)
+            var size = firstValidPageData ? [firstValidPageData.width, firstValidPageData.height] : [595, 842]
 
             var doc = new PDFDoc({
                 size,
@@ -220,16 +263,39 @@ function clicknteach(email, passwd, deleteAllOldTempImages) {
             dir.sort().forEach((file, idx) => {
                 doc.addPage();
                 doc.rect(0, 0, size[0], size[1]).fill("#000000");
-                var thissize = sizeOf(fs.readFileSync(folder + file));
+                var filePath = folder + file;
+                var fileBuffer = fs.readFileSync(filePath);
+                if (!fileBuffer || fileBuffer.length === 0) return;
+                var thissize = {
+                    width: size[0],
+                    height: size[1]
+                }
+                try {
+                    var parsedSize = sizeOf(fileBuffer);
+                    if (parsedSize && parsedSize.width && parsedSize.height) {
+                        thissize = parsedSize;
+                    }
+                } catch (error) {
+                    // ignore invalid metadata and fallback to default size
+                }
                 var thissizefitted = {
                     width: Math.min(size[0] / thissize.width, size[1] / thissize.height) * thissize.width,
                     height: Math.min(size[0] / thissize.width, size[1] / thissize.height) * thissize.height
                 }
-                doc.image(folder + file, {
-                    fit: size,
-                    align: 'center',
-                    valign: 'center'
-                })
+                if (file.toLowerCase().endsWith(".svg")) {
+                    SVGtoPDF(doc, fileBuffer.toString("utf8"), (size[0] - thissizefitted.width) / 2, (size[1] - thissizefitted.height) / 2, {
+                        width: thissizefitted.width,
+                        height: thissizefitted.height,
+                        preserveAspectRatio: "xMidYMid meet",
+                        assumePt: true,
+                    })
+                } else {
+                    doc.image(filePath, {
+                        fit: size,
+                        align: 'center',
+                        valign: 'center'
+                    })
+                }
                 if (selectableText) {
                     var pd = JSON.parse(pagesData[idx].data)
                     var outerTransform = toAffineMatrix(pd.viewport.transform)
