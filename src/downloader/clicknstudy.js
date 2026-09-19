@@ -163,9 +163,35 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
                         url: url,
                         responseType: 'stream'
                     }).then(res => {
-                        ffmpegProcess = spawn("ffmpeg", ["-f", "jpeg_pipe", "-i", "-", "-f", "image2", "-"]);
-                        ffmpegProcess.stdout.pipe(fs.createWriteStream(`${folder}${zeroPad(i, 4)}-${pageLabel}.jpg`));
-                        res.data.pipe(ffmpegProcess.stdin).on('finish', () => {
+                        const outputFile = `${folder}${zeroPad(i, 4)}-${pageLabel}.jpg`;
+                        const ffmpegProcess = spawn("ffmpeg", ["-i", "-", "-f", "image2", "-vcodec", "mjpeg", "-"]);
+                        const outputStream = fs.createWriteStream(outputFile);
+                        let ffmpegError = "";
+
+                        ffmpegProcess.stderr.on("data", data => {
+                            ffmpegError += data.toString();
+                        });
+                        ffmpegProcess.stdout.pipe(outputStream);
+                        res.data.pipe(ffmpegProcess.stdin);
+
+                        ffmpegProcess.stdin.on("error", () => {});
+
+                        Promise.all([
+                            new Promise((resolveFfmpeg, rejectFfmpeg) => {
+                                ffmpegProcess.on("error", rejectFfmpeg);
+                                ffmpegProcess.on("close", code => {
+                                    if (code === 0) {
+                                        resolveFfmpeg();
+                                        return;
+                                    }
+                                    rejectFfmpeg(new Error(ffmpegError || `ffmpeg exited with code ${code}`));
+                                });
+                            }),
+                            new Promise((resolveOutput, rejectOutput) => {
+                                outputStream.on("finish", resolveOutput);
+                                outputStream.on("error", rejectOutput);
+                            })
+                        ]).then(() => {
                             axiosInstance({
                                 method: 'post',
                                 url: getUrl(bookData.ajaxUrl),
@@ -182,6 +208,10 @@ function clicknstudy(email, passwd, deleteAllOldTempImages) {
                                 console.log("error while loading page " + i + " -e505")
                                 reject()
                             })
+                        }).catch(err => {
+                            console.error(err)
+                            console.log("error while converting page " + i + " -e506")
+                            reject()
                         })
                     }).catch(err => {
                         console.log(err)
